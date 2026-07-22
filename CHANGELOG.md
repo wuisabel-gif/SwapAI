@@ -12,6 +12,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Safe profile creation with `swapai add` and line-specific TSV diagnostics.
 - Ollama attach mode for reusing an existing external daemon.
 - Benchmark completion-token throughput and streaming time-to-first-token.
+- Cross-shell test execution, mandatory CI ShellCheck, and README status badges.
 
 ### Planned
 

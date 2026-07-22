@@ -4,7 +4,13 @@ set -eu
 
 TEST_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_TMP=$(mktemp -d "${TMPDIR:-/tmp}/swapai-test.XXXXXX")
-trap 'SWAPAI_CONFIG_HOME="$TEST_TMP/config" SWAPAI_STATE_HOME="$TEST_TMP/state" "$TEST_ROOT/bin/swapai" stop >/dev/null 2>&1 || true; rm -rf "$TEST_TMP"' EXIT HUP INT TERM
+SWAPAI_TEST_SHELL=${SWAPAI_TEST_SHELL:-sh}
+
+swapai_cli() {
+    "$SWAPAI_TEST_SHELL" "$TEST_ROOT/bin/swapai" "$@"
+}
+
+trap 'SWAPAI_CONFIG_HOME="$TEST_TMP/config" SWAPAI_STATE_HOME="$TEST_TMP/state" swapai_cli stop >/dev/null 2>&1 || true; rm -rf "$TEST_TMP"' EXIT HUP INT TERM
 
 export SWAPAI_CONFIG_HOME="$TEST_TMP/config"
 export SWAPAI_STATE_HOME="$TEST_TMP/state"
@@ -23,10 +29,10 @@ assert_contains() {
     esac
 }
 
-"$TEST_ROOT/bin/swapai" init >/dev/null
-add_output=$("$TEST_ROOT/bin/swapai" add added ollama added-model)
+swapai_cli init >/dev/null
+add_output=$(swapai_cli add added ollama added-model)
 assert_contains "$add_output" "Added profile: added"
-if "$TEST_ROOT/bin/swapai" add added ollama duplicate >/dev/null 2>&1; then
+if swapai_cli add added ollama duplicate >/dev/null 2>&1; then
     printf 'Expected duplicate profile creation to fail\n' >&2
     exit 1
 fi
@@ -38,28 +44,28 @@ printf 'fakellama\tllamacpp\t%s\t--ctx-size 1024\n' "$TEST_ROOT/README.md" >> "$
 printf 'fakevllm\tvllm\tfixture/model\t--dtype auto\n' >> "$SWAPAI_PROFILES"
 printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
 
-list_output=$("$TEST_ROOT/bin/swapai" list)
+list_output=$(swapai_cli list)
 assert_contains "$list_output" "coder"
 assert_contains "$list_output" "added"
 assert_contains "$list_output" "test"
 
-switch_output=$("$TEST_ROOT/bin/swapai" switch test)
+switch_output=$(swapai_cli switch test)
 assert_contains "$switch_output" "Active: test"
 
-model_switch_output=$("$TEST_ROOT/bin/swapai" switch --for-model fixture)
+model_switch_output=$(swapai_cli switch --for-model fixture)
 assert_contains "$model_switch_output" "Model fixture maps to profile test."
 assert_contains "$model_switch_output" "Active: test"
 
-status_output=$("$TEST_ROOT/bin/swapai" status)
+status_output=$(swapai_cli status)
 assert_contains "$status_output" "Status: running"
 assert_contains "$status_output" "Backend: mock"
 assert_contains "$status_output" "Model: fixture"
 
-if "$TEST_ROOT/bin/swapai" switch broken >/dev/null 2>&1; then
+if swapai_cli switch broken >/dev/null 2>&1; then
     printf 'Expected broken runtime startup to fail\n' >&2
     exit 1
 fi
-rollback_status=$("$TEST_ROOT/bin/swapai" status)
+rollback_status=$(swapai_cli status)
 assert_contains "$rollback_status" "Profile: test"
 assert_contains "$rollback_status" "Status: running"
 
@@ -67,38 +73,38 @@ FIXTURE_BIN="$TEST_ROOT/tests/fixtures/bin"
 export SWAPAI_TEST_CAPTURE="$TEST_TMP/adapter-calls.log"
 export PATH="$FIXTURE_BIN:$PATH"
 
-"$TEST_ROOT/bin/swapai" switch fakeollama >/dev/null
+swapai_cli switch fakeollama >/dev/null
 ollama_capture=$(sed -n '1,20p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$ollama_capture" "ollama|127.0.0.1:11435|serve"
 assert_contains "$ollama_capture" "/v1/models"
 assert_contains "$ollama_capture" "/api/show"
 assert_contains "$ollama_capture" "/api/generate"
 
-"$TEST_ROOT/bin/swapai" switch attached >/dev/null
-attached_status=$("$TEST_ROOT/bin/swapai" status)
+swapai_cli switch attached >/dev/null
+attached_status=$(swapai_cli status)
 assert_contains "$attached_status" "Backend: ollama-attach"
 assert_contains "$attached_status" "Ownership: external"
 assert_contains "$attached_status" "PID: external"
 assert_contains "$attached_status" "API: http://127.0.0.1:11434/v1"
 [ "$(grep -c '^ollama|' "$SWAPAI_TEST_CAPTURE")" -eq 1 ]
 
-"$TEST_ROOT/bin/swapai" switch fakellama >/dev/null
+swapai_cli switch fakellama >/dev/null
 llama_capture=$(sed -n '1,40p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$llama_capture" "llamacpp|-m $TEST_ROOT/README.md"
 assert_contains "$llama_capture" "--ctx-size 1024"
 
-"$TEST_ROOT/bin/swapai" switch fakevllm >/dev/null
+swapai_cli switch fakevllm >/dev/null
 vllm_capture=$(sed -n '1,60p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$vllm_capture" "vllm|-m vllm.entrypoints.openai.api_server"
 assert_contains "$vllm_capture" "--model fixture/model"
 
-model_output=$("$TEST_ROOT/bin/swapai" model)
+model_output=$(swapai_cli model)
 [ "$model_output" = "fixture/model" ]
 
-chat_output=$("$TEST_ROOT/bin/swapai" chat "hello from SwapAI")
+chat_output=$(swapai_cli chat "hello from SwapAI")
 assert_contains "$chat_output" "fixture response"
 
-benchmark_output=$("$TEST_ROOT/bin/swapai" benchmark "benchmark request")
+benchmark_output=$(swapai_cli benchmark "benchmark request")
 assert_contains "$benchmark_output" "Non-streaming total: 0.012s"
 assert_contains "$benchmark_output" "Streaming total: 0.020s"
 assert_contains "$benchmark_output" "Time to first token: 0.004s"
@@ -110,30 +116,30 @@ assert_contains "$api_capture" "/v1/chat/completions"
 assert_contains "$api_capture" '"stream":true'
 
 if SWAPAI_LLAMA_SERVER="$FIXTURE_BIN/fail-runtime" \
-    "$TEST_ROOT/bin/swapai" switch failllama >/dev/null 2>&1; then
+    swapai_cli switch failllama >/dev/null 2>&1; then
     printf 'Expected failing adapter startup to fail\n' >&2
     exit 1
 fi
-restored_status=$("$TEST_ROOT/bin/swapai" status)
+restored_status=$(swapai_cli status)
 assert_contains "$restored_status" "Profile: fakevllm"
 
-endpoint_output=$("$TEST_ROOT/bin/swapai" endpoint)
+endpoint_output=$(swapai_cli endpoint)
 [ "$endpoint_output" = "http://127.0.0.1:11435/v1" ]
 
-"$TEST_ROOT/bin/swapai" stop >/dev/null
-if "$TEST_ROOT/bin/swapai" status >/dev/null 2>&1; then
+swapai_cli stop >/dev/null
+if swapai_cli status >/dev/null 2>&1; then
     printf 'Expected stopped status to return non-zero\n' >&2
     exit 1
 fi
 
-if "$TEST_ROOT/bin/swapai" switch missing >/dev/null 2>&1; then
+if swapai_cli switch missing >/dev/null 2>&1; then
     printf 'Expected unknown profile to fail\n' >&2
     exit 1
 fi
 
 BAD_PROFILES="$TEST_TMP/bad-profiles.tsv"
 printf 'spaces ollama broken-model\n' > "$BAD_PROFILES"
-if doctor_output=$(SWAPAI_PROFILES="$BAD_PROFILES" "$TEST_ROOT/bin/swapai" doctor 2>&1); then
+if doctor_output=$(SWAPAI_PROFILES="$BAD_PROFILES" swapai_cli doctor 2>&1); then
     printf 'Expected malformed profiles to fail doctor\n' >&2
     exit 1
 fi

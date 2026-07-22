@@ -1,8 +1,15 @@
 # SwapAI
 
+[![CI](https://github.com/wuisabel-gif/SwapAI/actions/workflows/ci.yml/badge.svg)](https://github.com/wuisabel-gif/SwapAI/actions/workflows/ci.yml)
+[![ShellCheck](https://github.com/wuisabel-gif/SwapAI/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/wuisabel-gif/SwapAI/actions/workflows/shellcheck.yml)
+
 SwapAI is a shell-first orchestrator for local AI runtimes. It gives Ollama,
 llama.cpp, and vLLM one command-line interface and one predictable
 OpenAI-compatible API.
+
+The CLI is POSIX shell, requires no language runtime or package manager, and is
+covered by isolated mock-runtime tests on macOS and Linux. CI exercises the
+suite through `sh`, `bash`, and `dash` where available and runs ShellCheck.
 
 ```text
 Your editor / app / agent
@@ -18,6 +25,28 @@ Your editor / app / agent
 
 SwapAI is an orchestrator, not an inference engine. The selected backend still
 does the model computation.
+
+## Why not llama-swap?
+
+[llama-swap](https://github.com/mostlygeek/llama-swap) is the stronger choice
+when clients should select a model in each OpenAI-compatible request and have a
+proxy automatically start and route to the matching backend. It supports a
+broad proxy surface, concurrent-model policies, a web interface, and advanced
+routing features that SwapAI does not attempt to reproduce.
+
+SwapAI is intentionally smaller and more explicit:
+
+- Its control layer is auditable POSIX shell rather than a compiled proxy.
+- Ollama is a first-class backend with installed-model and load verification.
+- A human or agent selects a profile before inference, with rollback if the
+  replacement fails.
+- It manages one runtime at a time and exposes the runtime directly instead of
+  remaining in the request path.
+
+Choose SwapAI when you want a shell-native lifecycle tool whose actions are
+visible and deliberate. Choose llama-swap when transparent request-driven
+routing is the goal. `swapai switch --for-model MODEL` provides an opt-in bridge
+for agents that know a model ID but should not edit profile configuration.
 
 ## Quick start
 
@@ -174,9 +203,11 @@ make test
 ```
 
 The tests isolate all configuration and state in a temporary directory and use
-fixture adapters, so they do not download a model or require a GPU. CI runs the
-same checks on both macOS and Linux. See [CONTRIBUTING.md](CONTRIBUTING.md) for
-adapter requirements and contribution guidance.
+fixture adapters, so they do not download a model or require a GPU. `make test`
+runs them through every available POSIX-target shell among `sh`, `bash`, and
+`dash`; `make check` includes ShellCheck when installed. CI enforces both on
+macOS and Linux. See [CONTRIBUTING.md](CONTRIBUTING.md) for adapter requirements
+and contribution guidance.
 
 Release history is recorded in [CHANGELOG.md](CHANGELOG.md).
 
