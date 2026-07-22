@@ -24,6 +24,7 @@ assert_contains() {
 
 "$TEST_ROOT/bin/swapai" init >/dev/null
 printf 'test\tmock\tfixture\n' >> "$SWAPAI_PROFILES"
+printf 'broken\tunsupported\tfixture\n' >> "$SWAPAI_PROFILES"
 
 list_output=$("$TEST_ROOT/bin/swapai" list)
 assert_contains "$list_output" "coder"
@@ -36,6 +37,14 @@ status_output=$("$TEST_ROOT/bin/swapai" status)
 assert_contains "$status_output" "Status: running"
 assert_contains "$status_output" "Backend: mock"
 assert_contains "$status_output" "Model: fixture"
+
+if "$TEST_ROOT/bin/swapai" switch broken >/dev/null 2>&1; then
+    printf 'Expected broken runtime startup to fail\n' >&2
+    exit 1
+fi
+rollback_status=$("$TEST_ROOT/bin/swapai" status)
+assert_contains "$rollback_status" "Profile: test"
+assert_contains "$rollback_status" "Status: running"
 
 endpoint_output=$("$TEST_ROOT/bin/swapai" endpoint)
 [ "$endpoint_output" = "http://127.0.0.1:11435" ]

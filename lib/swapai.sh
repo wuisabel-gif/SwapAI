@@ -80,6 +80,18 @@ swapai_profile() {
     ' "$SWAPAI_PROFILES"
 }
 
+swapai_parse_profile_line() {
+    profile_line=$1
+    old_ifs=$IFS
+    IFS="$(printf '\t')"
+    set -- $profile_line
+    IFS=$old_ifs
+    parsed_name=$1
+    parsed_backend=$2
+    parsed_model=$3
+    parsed_arguments=${4:-}
+}
+
 swapai_list() {
     swapai_require_profiles || return 1
     printf '%-16s %-10s %s\n' "PROFILE" "BACKEND" "MODEL"
@@ -201,6 +213,45 @@ swapai_wait_ready() {
     return 1
 }
 
+swapai_port_in_use() {
+    checked_port=$1
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$checked_port" -sTCP:LISTEN -t >/dev/null 2>&1
+        return $?
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn 2>/dev/null | awk -v port=":$checked_port" '
+            NR > 1 && $4 ~ port "$" { found = 1 }
+            END { exit !found }
+        '
+        return $?
+    fi
+    return 1
+}
+
+swapai_activate_profile_line() {
+    activation_profile=$1
+    swapai_parse_profile_line "$activation_profile"
+
+    if swapai_port_in_use "$SWAPAI_PORT"; then
+        swapai_die "port $SWAPAI_PORT is already in use"
+        return 1
+    fi
+
+    swapai_info "Starting $parsed_name ($parsed_backend: $parsed_model)..."
+    activation_pid=$(swapai_start_backend \
+        "$parsed_backend" "$parsed_model" "$parsed_arguments") || return 1
+    swapai_write_active \
+        "$parsed_name" "$parsed_backend" "$parsed_model" "$activation_pid"
+
+    if ! swapai_wait_ready "$parsed_backend"; then
+        swapai_error "runtime did not become ready; see 'swapai logs'"
+        swapai_stop quiet >/dev/null 2>&1 || true
+        return 1
+    fi
+    return 0
+}
+
 swapai_switch() {
     [ "$#" -eq 1 ] || {
         swapai_die "usage: swapai switch <profile>"
@@ -211,36 +262,37 @@ swapai_switch() {
         swapai_die "unknown profile '$requested'"
         return 1
     }
-    old_ifs=$IFS
-    IFS="$(printf '\t')"
-    set -- $profile
-    IFS=$old_ifs
-    name=$1
-    backend=$2
-    model=$3
-    arguments=${4:-}
 
     swapai_ensure_dirs || return 1
+    previous_profile=
     if swapai_is_running; then
-        current=$(swapai_active_value name 2>/dev/null || printf 'current runtime')
+        current=$(swapai_active_value name 2>/dev/null || printf '')
+        if [ -n "$current" ]; then
+            previous_profile=$(swapai_profile "$current" 2>/dev/null || true)
+        fi
+        [ -n "$current" ] || current="current runtime"
         swapai_info "Stopping $current..."
         swapai_stop quiet || return 1
     fi
 
-    swapai_info "Starting $name ($backend: $model)..."
-    new_pid=$(swapai_start_backend "$backend" "$model" "$arguments") || return 1
-    swapai_write_active "$name" "$backend" "$model" "$new_pid"
-
-    if ! swapai_wait_ready "$backend"; then
-        swapai_error "runtime did not become ready; see 'swapai logs'"
-        swapai_stop quiet >/dev/null 2>&1 || true
+    if ! swapai_activate_profile_line "$profile"; then
+        if [ -n "$previous_profile" ]; then
+            swapai_info "Restoring previous runtime..."
+            if swapai_activate_profile_line "$previous_profile"; then
+                restored_name=$(swapai_active_value name)
+                swapai_error "switch failed; restored $restored_name"
+            else
+                swapai_error "switch and rollback both failed"
+            fi
+        fi
         return 1
     fi
 
-    swapai_info "Active: $name"
+    swapai_parse_profile_line "$profile"
+    swapai_info "Active: $parsed_name"
     swapai_info "Endpoint: http://$SWAPAI_HOST:$SWAPAI_PORT"
-    if [ "$backend" = ollama ]; then
-        swapai_info "Model will load on its first request: $model"
+    if [ "$parsed_backend" = ollama ]; then
+        swapai_info "Model will load on its first request: $parsed_model"
     fi
 }
 

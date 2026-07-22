@@ -53,6 +53,10 @@ swapai doctor               Check runtime and tool availability
 `use`, `ls`, and `bench` are short aliases for `switch`, `list`, and
 `benchmark`.
 
+Switches are failure-safe: if a replacement runtime cannot start or become
+healthy, SwapAI attempts to restore the previously active profile. It also
+reports an occupied endpoint port before attempting startup.
+
 ## Profiles
 
 Profiles are tab-separated and live at
