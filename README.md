@@ -60,13 +60,18 @@ swapai endpoint             Print the OpenAI-compatible /v1 base URL
 swapai model                Print the active model identifier
 swapai chat [prompt]         Send one OpenAI-compatible chat request
 swapai logs [--follow]      Read or follow runtime logs
-swapai benchmark [prompt]   Time one non-streaming inference request
+swapai benchmark [prompt]   Measure latency, TTFT, and output throughput
 swapai doctor               Check runtime and tool availability
 ```
 
 `use`, `ls`, and `bench` are short aliases for `switch`, `list`, and
 `benchmark`. Both `chat` and `benchmark` use the same
 `/v1/chat/completions` contract across every production backend.
+
+`benchmark` makes one non-streaming request for a complete response and one
+streaming request for time-to-first-token. It reports `completion_tokens`,
+estimated generation time, and tokens per second. The streaming response and
+the normal JSON response are retained in the state directory for inspection.
 
 Switches are failure-safe: if a replacement runtime cannot start or become
 healthy, SwapAI attempts to restore the previously active profile. It also

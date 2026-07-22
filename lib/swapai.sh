@@ -618,6 +618,32 @@ swapai_logs() {
     esac
 }
 
+swapai_json_integer() {
+    json_key=$1
+    json_file=$2
+    tr -d '\n\r' < "$json_file" | sed -n \
+        "s/.*\"${json_key}\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p"
+}
+
+swapai_time_difference() {
+    time_total=$1
+    time_start=$2
+    awk -v total="$time_total" -v start="$time_start" 'BEGIN {
+        difference = total - start
+        if (difference < 0) difference = 0
+        printf "%.3f", difference
+    }'
+}
+
+swapai_tokens_per_second() {
+    token_count=$1
+    elapsed=$2
+    awk -v tokens="$token_count" -v seconds="$elapsed" 'BEGIN {
+        if (seconds <= 0) exit 1
+        printf "%.1f", tokens / seconds
+    }'
+}
+
 swapai_benchmark() {
     swapai_is_running || {
         swapai_die "no runtime is active"
@@ -638,16 +664,45 @@ swapai_benchmark() {
     escaped_model=$(swapai_json_escape "$bench_model")
     bench_url="$(swapai_api_endpoint)/chat/completions"
     bench_data="{\"model\":\"$escaped_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped_prompt\"}],\"stream\":false}"
-    result=$(curl -fsS -o "$SWAPAI_STATE_HOME/benchmark.json" \
-        -w '%{time_total}' -H 'Content-Type: application/json' \
+    nonstream_result=$(curl -fsS -o "$SWAPAI_STATE_HOME/benchmark.json" \
+        -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' \
         -d "$bench_data" "$bench_url") || {
         swapai_die "benchmark request failed"
         return 1
     }
+    nonstream_total=$(printf '%s\n' "$nonstream_result" | awk '{ print $2 }')
+
+    stream_data="{\"model\":\"$escaped_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped_prompt\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    stream_result=$(curl -fsS -N -o "$SWAPAI_STATE_HOME/benchmark.stream" \
+        -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' \
+        -d "$stream_data" "$bench_url") || {
+        swapai_die "streaming benchmark request failed"
+        return 1
+    }
+    time_to_first_token=$(printf '%s\n' "$stream_result" | awk '{ print $1 }')
+    stream_total=$(printf '%s\n' "$stream_result" | awk '{ print $2 }')
+    generation_time=$(swapai_time_difference "$stream_total" "$time_to_first_token")
+    completion_tokens=$(swapai_json_integer completion_tokens "$SWAPAI_STATE_HOME/benchmark.stream")
+    if [ -z "$completion_tokens" ]; then
+        completion_tokens=$(swapai_json_integer completion_tokens "$SWAPAI_STATE_HOME/benchmark.json")
+    fi
+
     swapai_info "Model: $bench_model"
     swapai_info "Backend: $bench_backend"
-    swapai_info "Total time: ${result}s"
+    swapai_info "Non-streaming total: ${nonstream_total}s"
+    swapai_info "Streaming total: ${stream_total}s"
+    swapai_info "Time to first token: ${time_to_first_token}s"
+    swapai_info "Generation time: ${generation_time}s"
+    if [ -n "$completion_tokens" ]; then
+        throughput=$(swapai_tokens_per_second "$completion_tokens" "$generation_time") || throughput=unavailable
+        swapai_info "Completion tokens: $completion_tokens"
+        swapai_info "Throughput: $throughput tokens/s"
+    else
+        swapai_info "Completion tokens: unavailable"
+        swapai_info "Throughput: unavailable"
+    fi
     swapai_info "Response: $SWAPAI_STATE_HOME/benchmark.json"
+    swapai_info "Stream: $SWAPAI_STATE_HOME/benchmark.stream"
 }
 
 swapai_doctor_line() {

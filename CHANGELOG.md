@@ -6,6 +6,13 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Added
+
+- Exact model-to-profile switching with `switch --for-model`.
+- Safe profile creation with `swapai add` and line-specific TSV diagnostics.
+- Ollama attach mode for reusing an existing external daemon.
+- Benchmark completion-token throughput and streaming time-to-first-token.
+
 ### Planned
 
 - Persistent benchmark history and comparisons.

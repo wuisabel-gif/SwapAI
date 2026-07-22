@@ -99,9 +99,15 @@ chat_output=$("$TEST_ROOT/bin/swapai" chat "hello from SwapAI")
 assert_contains "$chat_output" "fixture response"
 
 benchmark_output=$("$TEST_ROOT/bin/swapai" benchmark "benchmark request")
-assert_contains "$benchmark_output" "Total time: 0.012s"
+assert_contains "$benchmark_output" "Non-streaming total: 0.012s"
+assert_contains "$benchmark_output" "Streaming total: 0.020s"
+assert_contains "$benchmark_output" "Time to first token: 0.004s"
+assert_contains "$benchmark_output" "Generation time: 0.016s"
+assert_contains "$benchmark_output" "Completion tokens: 4"
+assert_contains "$benchmark_output" "Throughput: 250.0 tokens/s"
 api_capture=$(sed -n '1,100p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$api_capture" "/v1/chat/completions"
+assert_contains "$api_capture" '"stream":true'
 
 if SWAPAI_LLAMA_SERVER="$FIXTURE_BIN/fail-runtime" \
     "$TEST_ROOT/bin/swapai" switch failllama >/dev/null 2>&1; then

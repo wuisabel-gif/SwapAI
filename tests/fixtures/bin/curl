@@ -1,13 +1,53 @@
 #!/bin/sh
 
+captured_arguments=$*
 if [ -n "${SWAPAI_TEST_CAPTURE:-}" ]; then
-    printf 'curl|%s\n' "$*" >> "$SWAPAI_TEST_CAPTURE"
+    printf 'curl|%s\n' "$captured_arguments" >> "$SWAPAI_TEST_CAPTURE"
 fi
 
-case " $* " in
-    *" -w "*) printf '0.012' ;;
+output_file=
+write_format=
+request_data=
+while [ "$#" -gt 0 ]; do
+    case $1 in
+        -o)
+            shift
+            output_file=$1
+            ;;
+        -w)
+            shift
+            write_format=$1
+            ;;
+        -d)
+            shift
+            request_data=$1
+            ;;
+    esac
+    shift
+done
+
+case $captured_arguments in
     *"/v1/chat/completions"*)
-        printf '%s\n' '{"choices":[{"message":{"content":"fixture response"}}]}'
+        case $request_data in
+            *'"stream":true'*)
+                response='data: {"choices":[{"delta":{"content":"ready"}}]}
+
+data: {"choices":[],"usage":{"completion_tokens":4}}
+
+data: [DONE]'
+                metrics='0.004 0.020'
+                ;;
+            *)
+                response='{"choices":[{"message":{"content":"fixture response"}}],"usage":{"completion_tokens":4}}'
+                metrics='0.002 0.012'
+                ;;
+        esac
+        if [ -n "$output_file" ]; then
+            printf '%s\n' "$response" > "$output_file"
+        else
+            printf '%s\n' "$response"
+        fi
+        [ -z "$write_format" ] || printf '%s' "$metrics"
         ;;
 esac
 exit 0
