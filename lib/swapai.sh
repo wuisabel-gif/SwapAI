@@ -14,6 +14,7 @@ SWAPAI_ROOT=${SWAPAI_ROOT:?SWAPAI_ROOT must point to the SwapAI installation}
 : "${SWAPAI_LOG_FILE:=$SWAPAI_STATE_HOME/runtime.log}"
 : "${SWAPAI_START_TIMEOUT:=120}"
 : "${SWAPAI_MODEL_TIMEOUT:=300}"
+: "${SWAPAI_STOP_TIMEOUT:=15}"
 
 swapai_info() {
     printf '%s\n' "$*"
@@ -185,6 +186,16 @@ swapai_read_pid() {
     printf '%s\n' "$pid"
 }
 
+swapai_pid_active() {
+    checked_pid=$1
+    kill -0 "$checked_pid" 2>/dev/null || return 1
+    process_state=$(ps -o stat= -p "$checked_pid" 2>/dev/null | tr -d '[:space:]')
+    case $process_state in
+        *Z*) return 1 ;;
+    esac
+    return 0
+}
+
 swapai_is_running() {
     active_backend=$(swapai_active_value backend 2>/dev/null || true)
     if [ "$active_backend" = ollama-attach ]; then
@@ -193,7 +204,7 @@ swapai_is_running() {
         return $?
     fi
     running_pid=$(swapai_read_pid) || return 1
-    kill -0 "$running_pid" 2>/dev/null
+    swapai_pid_active "$running_pid"
 }
 
 swapai_write_active() {
@@ -550,6 +561,19 @@ swapai_run() {
     return "$run_restore_status"
 }
 
+swapai_warn_gpu_release() {
+    released_pid=$1
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+    gpu_pids=$(nvidia-smi --query-compute-apps=pid \
+        --format=csv,noheader,nounits 2>/dev/null || true)
+    if printf '%s\n' "$gpu_pids" | awk -v wanted="$released_pid" '
+        $1 == wanted { found = 1 }
+        END { exit !found }
+    '; then
+        swapai_error "warning: GPU still reports runtime PID $released_pid after stop"
+    fi
+}
+
 swapai_stop() {
     stop_mode=${1:-normal}
     stop_backend=$(swapai_active_value backend 2>/dev/null || true)
@@ -569,13 +593,26 @@ swapai_stop() {
         rm -f "$SWAPAI_ACTIVE_FILE" "$SWAPAI_PID_FILE"
         return 1
     fi
-    if kill -0 "$stop_pid" 2>/dev/null; then
+    case $SWAPAI_STOP_TIMEOUT in
+        ''|*[!0-9]*)
+            swapai_die "SWAPAI_STOP_TIMEOUT must be a non-negative integer"
+            return 1
+            ;;
+    esac
+    if swapai_pid_active "$stop_pid"; then
         kill "$stop_pid" 2>/dev/null || return 1
-        sleep 1
-        if kill -0 "$stop_pid" 2>/dev/null; then
+        stop_elapsed=0
+        while swapai_pid_active "$stop_pid" && \
+            [ "$stop_elapsed" -lt "$SWAPAI_STOP_TIMEOUT" ]; do
+            sleep 1
+            stop_elapsed=$((stop_elapsed + 1))
+        done
+        if swapai_pid_active "$stop_pid"; then
+            swapai_error "runtime did not stop within ${SWAPAI_STOP_TIMEOUT}s; sending KILL"
             kill -KILL "$stop_pid" 2>/dev/null || true
         fi
     fi
+    swapai_warn_gpu_release "$stop_pid"
     rm -f "$SWAPAI_ACTIVE_FILE" "$SWAPAI_PID_FILE"
     [ "$stop_mode" = quiet ] || swapai_info "Stopped SwapAI runtime."
 }

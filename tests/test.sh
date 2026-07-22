@@ -45,6 +45,7 @@ fi
     printf 'fakellama\tllamacpp\t%s\t--ctx-size 1024\n' "$TEST_ROOT/README.md"
     printf 'fakevllm\tvllm\tfixture/model\t--dtype auto\n'
     printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md"
+    printf 'slowstop\tllamacpp\t%s\n' "$TEST_ROOT/README.md"
 } >> "$SWAPAI_PROFILES"
 
 list_output=$(swapai_cli list)
@@ -145,6 +146,14 @@ if swapai_cli status >/dev/null 2>&1; then
     printf 'Expected stopped status to return non-zero\n' >&2
     exit 1
 fi
+
+SWAPAI_LLAMA_SERVER="$FIXTURE_BIN/slow-runtime" swapai_cli switch slowstop >/dev/null
+SWAPAI_TEST_GPU_PID=$(sed -n '1p' "$SWAPAI_PID_FILE")
+export SWAPAI_TEST_GPU_PID
+stop_output=$(SWAPAI_STOP_TIMEOUT=1 swapai_cli stop 2>&1)
+assert_contains "$stop_output" "sending KILL"
+assert_contains "$stop_output" "GPU still reports runtime PID"
+unset SWAPAI_TEST_GPU_PID
 
 swapai_cli run testb -- true >/dev/null
 if swapai_cli status >/dev/null 2>&1; then

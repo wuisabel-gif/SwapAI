@@ -14,6 +14,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Benchmark completion-token throughput and streaming time-to-first-token.
 - Cross-shell test execution, mandatory CI ShellCheck, and README status badges.
 - Session-scoped commands with automatic runtime restoration via `swapai run`.
+- Configurable graceful shutdown and post-stop NVIDIA process diagnostics.
 
 ### Planned
 

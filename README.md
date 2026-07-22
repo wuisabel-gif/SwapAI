@@ -116,6 +116,12 @@ Switches are failure-safe: if a replacement runtime cannot start or become
 healthy, SwapAI attempts to restore the previously active profile. It also
 reports an occupied endpoint port before attempting startup.
 
+Managed runtimes receive `TERM` and up to 15 seconds to shut down before
+SwapAI sends `KILL`, avoiding premature termination while vLLM releases GPU
+resources. When `nvidia-smi` is available, SwapAI warns if the stopped runtime
+PID is still reported as a compute process; this diagnostic never blocks the
+next operation.
+
 Before stopping the current runtime, SwapAI validates the replacement's
 executable and local model path where possible. Unsupported or incomplete
 profiles therefore leave the active runtime untouched.
@@ -196,6 +202,7 @@ Environment variables make SwapAI easy to script and test:
 | `SWAPAI_PYTHON` | `python3` | Python used to start vLLM |
 | `SWAPAI_START_TIMEOUT` | `120` | Seconds allowed for runtime startup |
 | `SWAPAI_MODEL_TIMEOUT` | `300` | Seconds allowed for Ollama model loading |
+| `SWAPAI_STOP_TIMEOUT` | `15` | Grace period before a managed runtime is killed |
 
 The installer accepts `SWAPAI_INSTALL_DIR` for the executable directory and
 `SWAPAI_SHARE_DIR` for the self-contained program files.
