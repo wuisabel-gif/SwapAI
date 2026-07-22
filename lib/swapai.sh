@@ -15,6 +15,7 @@ SWAPAI_ROOT=${SWAPAI_ROOT:?SWAPAI_ROOT must point to the SwapAI installation}
 : "${SWAPAI_START_TIMEOUT:=120}"
 : "${SWAPAI_MODEL_TIMEOUT:=300}"
 : "${SWAPAI_STOP_TIMEOUT:=15}"
+: "${SWAPAI_ATTACH_UNLOAD:=1}"
 
 swapai_info() {
     printf '%s\n' "$*"
@@ -586,12 +587,41 @@ swapai_warn_gpu_release() {
     fi
 }
 
+swapai_unload_attached_model() {
+    case $SWAPAI_ATTACH_UNLOAD in
+        0) return 0 ;;
+        1) ;;
+        *)
+            swapai_die "SWAPAI_ATTACH_UNLOAD must be 0 or 1"
+            return 1
+            ;;
+    esac
+
+    attached_model=$(swapai_active_value model 2>/dev/null || true)
+    [ -n "$attached_model" ] || return 0
+    escaped_attached_model=$(swapai_json_escape "$attached_model")
+    unload_data="{\"model\":\"$escaped_attached_model\",\"prompt\":\"\",\"stream\":false,\"keep_alive\":0}"
+    if ! curl -fsS --max-time 10 \
+        -H 'Content-Type: application/json' \
+        -d "$unload_data" \
+        "$(swapai_runtime_endpoint)/api/generate" >/dev/null; then
+        swapai_error "warning: could not unload $attached_model from external Ollama runtime"
+    fi
+}
+
 swapai_stop() {
     stop_mode=${1:-normal}
     stop_backend=$(swapai_active_value backend 2>/dev/null || true)
     if [ "$stop_backend" = ollama-attach ]; then
+        swapai_unload_attached_model || return 1
         rm -f "$SWAPAI_ACTIVE_FILE" "$SWAPAI_PID_FILE"
-        [ "$stop_mode" = quiet ] || swapai_info "Detached from external Ollama runtime."
+        if [ "$stop_mode" != quiet ]; then
+            if [ "$SWAPAI_ATTACH_UNLOAD" = 1 ]; then
+                swapai_info "Unloaded the attached model and detached from external Ollama runtime."
+            else
+                swapai_info "Detached from external Ollama runtime; the model remains loaded."
+            fi
+        fi
         return 0
     fi
     if ! stop_pid=$(swapai_read_pid); then

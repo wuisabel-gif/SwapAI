@@ -183,9 +183,12 @@ swapai switch existing
 ```
 
 Attach mode verifies and loads the configured model but never stops the
-external Ollama process. Its API endpoint is `http://127.0.0.1:11434/v1` by
-default, so clients must use the endpoint printed by `swapai endpoint`. Set
-`SWAPAI_OLLAMA_PORT` if the existing service uses another port.
+external Ollama process. By default, `swapai stop` unloads the model that
+SwapAI pinned in the external daemon before detaching. Set
+`SWAPAI_ATTACH_UNLOAD=0` if that model should remain warm. The API endpoint is
+`http://127.0.0.1:11434/v1` by default, so clients must use the endpoint printed
+by `swapai endpoint`. Set `SWAPAI_OLLAMA_PORT` if the existing service uses
+another port.
 
 `swapai doctor` checks both the native Ollama port and SwapAI's configured
 endpoint. It warns when a native daemon could compete with a separately managed
@@ -207,6 +210,7 @@ Environment variables make SwapAI easy to script and test:
 | `SWAPAI_START_TIMEOUT` | `120` | Seconds allowed for runtime startup |
 | `SWAPAI_MODEL_TIMEOUT` | `300` | Seconds allowed for Ollama model loading |
 | `SWAPAI_STOP_TIMEOUT` | `15` | Grace period before a managed runtime is killed |
+| `SWAPAI_ATTACH_UNLOAD` | `1` | Unload an attached Ollama model when detaching (`0` keeps it warm) |
 
 The installer accepts `SWAPAI_INSTALL_DIR` for the executable directory and
 `SWAPAI_SHARE_DIR` for the self-contained program files.

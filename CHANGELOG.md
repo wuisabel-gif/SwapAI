@@ -17,6 +17,11 @@ The project follows [Semantic Versioning](https://semver.org/).
 - Configurable graceful shutdown and post-stop NVIDIA process diagnostics.
 - Doctor warnings for native Ollama and unowned SwapAI port collisions.
 
+### Changed
+
+- Ollama attach mode now unloads its pinned model when detaching by default;
+  `SWAPAI_ATTACH_UNLOAD=0` keeps the model warm.
+
 ### Planned
 
 - Persistent benchmark history and comparisons.

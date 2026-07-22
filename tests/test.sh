@@ -105,6 +105,7 @@ assert_contains "$attached_status" "API: http://127.0.0.1:11434/v1"
 
 swapai_cli switch fakellama >/dev/null
 llama_capture=$(sed -n '1,40p' "$SWAPAI_TEST_CAPTURE")
+assert_contains "$llama_capture" '"keep_alive":0'
 assert_contains "$llama_capture" "llamacpp|-m $TEST_ROOT/README.md"
 assert_contains "$llama_capture" "--ctx-size 1024"
 
