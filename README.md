@@ -57,6 +57,10 @@ Switches are failure-safe: if a replacement runtime cannot start or become
 healthy, SwapAI attempts to restore the previously active profile. It also
 reports an occupied endpoint port before attempting startup.
 
+Before stopping the current runtime, SwapAI validates the replacement's
+executable and local model path where possible. Unsupported or incomplete
+profiles therefore leave the active runtime untouched.
+
 ## Profiles
 
 Profiles are tab-separated and live at
@@ -77,8 +81,8 @@ The separators must be literal tab characters. Supported backend values are:
 - `vllm`: runs the vLLM OpenAI-compatible server through Python.
 - `mock`: lifecycle-only backend used by the test suite.
 
-For Ollama, the configured model loads on the first request. Pull it before
-switching if it is not installed yet:
+For Ollama, a switch verifies that the configured model is installed and loads
+it before reporting the profile as active. Pull it before switching if needed:
 
 ```sh
 ollama pull qwen2.5-coder:7b
@@ -96,6 +100,8 @@ Environment variables make SwapAI easy to script and test:
 | `SWAPAI_STATE_HOME` | `$XDG_STATE_HOME/swapai` | PID, active state, logs |
 | `SWAPAI_LLAMA_SERVER` | `llama-server` | llama.cpp server executable |
 | `SWAPAI_PYTHON` | `python3` | Python used to start vLLM |
+| `SWAPAI_START_TIMEOUT` | `120` | Seconds allowed for runtime startup |
+| `SWAPAI_MODEL_TIMEOUT` | `300` | Seconds allowed for Ollama model loading |
 
 The installer accepts `SWAPAI_INSTALL_DIR` for the executable directory and
 `SWAPAI_SHARE_DIR` for the self-contained program files.

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+if [ -n "${SWAPAI_TEST_CAPTURE:-}" ]; then
+    printf 'curl|%s\n' "$*" >> "$SWAPAI_TEST_CAPTURE"
+fi
+
+case " $* " in
+    *" -w "*) printf '0.012' ;;
+esac
+exit 0
+

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+printf 'failed|%s\n' "$*" >> "$SWAPAI_TEST_CAPTURE"
+exit 1
+

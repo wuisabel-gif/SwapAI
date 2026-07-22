@@ -1,0 +1,10 @@
+#!/bin/sh
+
+printf 'ollama|%s|%s\n' "${OLLAMA_HOST:-}" "$*" >> "$SWAPAI_TEST_CAPTURE"
+case ${1:-} in
+    serve)
+        trap 'exit 0' TERM INT
+        while :; do sleep 1; done
+        ;;
+esac
+

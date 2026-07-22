@@ -9,6 +9,8 @@
 : "${SWAPAI_ACTIVE_FILE:=$SWAPAI_STATE_HOME/active}"
 : "${SWAPAI_PID_FILE:=$SWAPAI_STATE_HOME/runtime.pid}"
 : "${SWAPAI_LOG_FILE:=$SWAPAI_STATE_HOME/runtime.log}"
+: "${SWAPAI_START_TIMEOUT:=120}"
+: "${SWAPAI_MODEL_TIMEOUT:=300}"
 
 swapai_info() {
     printf '%s\n' "$*"
@@ -149,7 +151,7 @@ swapai_start_process() {
         rm -f "$SWAPAI_PID_FILE"
         return 1
     fi
-    printf '%s\n' "$started_pid"
+    SWAPAI_STARTED_PID=$started_pid
 }
 
 swapai_start_backend() {
@@ -199,18 +201,102 @@ swapai_start_backend() {
 swapai_wait_ready() {
     ready_backend=$1
     [ "$ready_backend" = mock ] && return 0
-    command -v curl >/dev/null 2>&1 || return 0
+    command -v curl >/dev/null 2>&1 || {
+        swapai_error "curl is required for runtime health checks"
+        return 1
+    }
     attempt=0
-    while [ "$attempt" -lt 30 ]; do
-        if curl -fsS --max-time 1 "http://$SWAPAI_HOST:$SWAPAI_PORT/" >/dev/null 2>&1 || \
-           curl -fsS --max-time 1 "http://$SWAPAI_HOST:$SWAPAI_PORT/v1/models" >/dev/null 2>&1 || \
-           curl -fsS --max-time 1 "http://$SWAPAI_HOST:$SWAPAI_PORT/api/tags" >/dev/null 2>&1; then
-            return 0
-        fi
+    while [ "$attempt" -lt "$SWAPAI_START_TIMEOUT" ]; do
+        swapai_is_running || return 1
+        case $ready_backend in
+            ollama)
+                curl -fsS --max-time 1 \
+                    "http://$SWAPAI_HOST:$SWAPAI_PORT/api/tags" >/dev/null 2>&1 && return 0
+                ;;
+            llamacpp|vllm)
+                curl -fsS --max-time 1 \
+                    "http://$SWAPAI_HOST:$SWAPAI_PORT/v1/models" >/dev/null 2>&1 && return 0
+                ;;
+        esac
         sleep 1
         attempt=$((attempt + 1))
     done
     return 1
+}
+
+swapai_json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+swapai_prepare_model() {
+    prepared_backend=$1
+    prepared_model=$2
+    [ "$prepared_backend" = ollama ] || return 0
+
+    escaped_prepared_model=$(swapai_json_escape "$prepared_model")
+    show_data="{\"model\":\"$escaped_prepared_model\"}"
+    if ! curl -fsS --max-time 10 \
+        -H 'Content-Type: application/json' \
+        -d "$show_data" \
+        "http://$SWAPAI_HOST:$SWAPAI_PORT/api/show" >/dev/null 2>&1; then
+        swapai_error "Ollama model is not installed: $prepared_model"
+        swapai_error "install it with: ollama pull $prepared_model"
+        return 1
+    fi
+
+    swapai_info "Loading $prepared_model..."
+    load_data="{\"model\":\"$escaped_prepared_model\",\"prompt\":\"\",\"stream\":false,\"keep_alive\":-1}"
+    if ! curl -fsS --max-time "$SWAPAI_MODEL_TIMEOUT" \
+        -H 'Content-Type: application/json' \
+        -d "$load_data" \
+        "http://$SWAPAI_HOST:$SWAPAI_PORT/api/generate" >/dev/null; then
+        swapai_error "Ollama could not load model: $prepared_model"
+        return 1
+    fi
+}
+
+swapai_validate_profile_line() {
+    validation_profile=$1
+    swapai_parse_profile_line "$validation_profile"
+    case $parsed_backend in
+        ollama)
+            command -v ollama >/dev/null 2>&1 || {
+                swapai_die "ollama is not installed"
+                return 1
+            }
+            command -v curl >/dev/null 2>&1 || {
+                swapai_die "curl is required for Ollama readiness checks"
+                return 1
+            }
+            ;;
+        llamacpp)
+            validation_llama=${SWAPAI_LLAMA_SERVER:-llama-server}
+            command -v "$validation_llama" >/dev/null 2>&1 || {
+                swapai_die "llama.cpp server not found: $validation_llama"
+                return 1
+            }
+            [ -r "$parsed_model" ] || {
+                swapai_die "GGUF model is not readable: $parsed_model"
+                return 1
+            }
+            ;;
+        vllm)
+            validation_python=${SWAPAI_PYTHON:-python3}
+            command -v "$validation_python" >/dev/null 2>&1 || {
+                swapai_die "python3 is not installed"
+                return 1
+            }
+            "$validation_python" -c 'import vllm' >/dev/null 2>&1 || {
+                swapai_die "vLLM is not installed for $validation_python"
+                return 1
+            }
+            ;;
+        mock) ;;
+        *)
+            swapai_die "unsupported backend '$parsed_backend'"
+            return 1
+            ;;
+    esac
 }
 
 swapai_port_in_use() {
@@ -239,13 +325,18 @@ swapai_activate_profile_line() {
     fi
 
     swapai_info "Starting $parsed_name ($parsed_backend: $parsed_model)..."
-    activation_pid=$(swapai_start_backend \
-        "$parsed_backend" "$parsed_model" "$parsed_arguments") || return 1
+    swapai_start_backend \
+        "$parsed_backend" "$parsed_model" "$parsed_arguments" || return 1
+    activation_pid=$SWAPAI_STARTED_PID
     swapai_write_active \
         "$parsed_name" "$parsed_backend" "$parsed_model" "$activation_pid"
 
     if ! swapai_wait_ready "$parsed_backend"; then
         swapai_error "runtime did not become ready; see 'swapai logs'"
+        swapai_stop quiet >/dev/null 2>&1 || true
+        return 1
+    fi
+    if ! swapai_prepare_model "$parsed_backend" "$parsed_model"; then
         swapai_stop quiet >/dev/null 2>&1 || true
         return 1
     fi
@@ -262,6 +353,7 @@ swapai_switch() {
         swapai_die "unknown profile '$requested'"
         return 1
     }
+    swapai_validate_profile_line "$profile" || return 1
 
     swapai_ensure_dirs || return 1
     previous_profile=
@@ -291,9 +383,6 @@ swapai_switch() {
     swapai_parse_profile_line "$profile"
     swapai_info "Active: $parsed_name"
     swapai_info "Endpoint: http://$SWAPAI_HOST:$SWAPAI_PORT"
-    if [ "$parsed_backend" = ollama ]; then
-        swapai_info "Model will load on its first request: $parsed_model"
-    fi
 }
 
 swapai_stop() {
@@ -365,8 +454,8 @@ swapai_benchmark() {
         return 1
     }
     bench_prompt=${*:-Reply with exactly: ready}
-    escaped_prompt=$(printf '%s' "$bench_prompt" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    escaped_model=$(printf '%s' "$bench_model" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    escaped_prompt=$(swapai_json_escape "$bench_prompt")
+    escaped_model=$(swapai_json_escape "$bench_model")
     if [ "$bench_backend" = ollama ]; then
         bench_url="http://$SWAPAI_HOST:$SWAPAI_PORT/api/generate"
         bench_data="{\"model\":\"$escaped_model\",\"prompt\":\"$escaped_prompt\",\"stream\":false}"

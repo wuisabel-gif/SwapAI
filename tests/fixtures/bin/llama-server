@@ -1,0 +1,6 @@
+#!/bin/sh
+
+printf 'llamacpp|%s\n' "$*" >> "$SWAPAI_TEST_CAPTURE"
+trap 'exit 0' TERM INT
+while :; do sleep 1; done
+
