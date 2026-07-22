@@ -6,6 +6,8 @@ fi
 
 case " $* " in
     *" -w "*) printf '0.012' ;;
+    *"/v1/chat/completions"*)
+        printf '%s\n' '{"choices":[{"message":{"content":"fixture response"}}]}'
+        ;;
 esac
 exit 0
-

@@ -58,6 +58,7 @@ export PATH="$FIXTURE_BIN:$PATH"
 "$TEST_ROOT/bin/swapai" switch fakeollama >/dev/null
 ollama_capture=$(sed -n '1,20p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$ollama_capture" "ollama|127.0.0.1:11435|serve"
+assert_contains "$ollama_capture" "/v1/models"
 assert_contains "$ollama_capture" "/api/show"
 assert_contains "$ollama_capture" "/api/generate"
 
@@ -71,6 +72,17 @@ vllm_capture=$(sed -n '1,60p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$vllm_capture" "vllm|-m vllm.entrypoints.openai.api_server"
 assert_contains "$vllm_capture" "--model fixture/model"
 
+model_output=$("$TEST_ROOT/bin/swapai" model)
+[ "$model_output" = "fixture/model" ]
+
+chat_output=$("$TEST_ROOT/bin/swapai" chat "hello from SwapAI")
+assert_contains "$chat_output" "fixture response"
+
+benchmark_output=$("$TEST_ROOT/bin/swapai" benchmark "benchmark request")
+assert_contains "$benchmark_output" "Total time: 0.012s"
+api_capture=$(sed -n '1,100p' "$SWAPAI_TEST_CAPTURE")
+assert_contains "$api_capture" "/v1/chat/completions"
+
 if SWAPAI_LLAMA_SERVER="$FIXTURE_BIN/fail-runtime" \
     "$TEST_ROOT/bin/swapai" switch failllama >/dev/null 2>&1; then
     printf 'Expected failing adapter startup to fail\n' >&2
@@ -80,7 +92,7 @@ restored_status=$("$TEST_ROOT/bin/swapai" status)
 assert_contains "$restored_status" "Profile: fakevllm"
 
 endpoint_output=$("$TEST_ROOT/bin/swapai" endpoint)
-[ "$endpoint_output" = "http://127.0.0.1:11435" ]
+[ "$endpoint_output" = "http://127.0.0.1:11435/v1" ]
 
 "$TEST_ROOT/bin/swapai" stop >/dev/null
 if "$TEST_ROOT/bin/swapai" status >/dev/null 2>&1; then

@@ -36,6 +36,8 @@ Usage:
   swapai status
   swapai stop
   swapai endpoint
+  swapai model
+  swapai chat [prompt]
   swapai logs [--follow]
   swapai benchmark [prompt]
   swapai doctor
@@ -208,16 +210,8 @@ swapai_wait_ready() {
     attempt=0
     while [ "$attempt" -lt "$SWAPAI_START_TIMEOUT" ]; do
         swapai_is_running || return 1
-        case $ready_backend in
-            ollama)
-                curl -fsS --max-time 1 \
-                    "http://$SWAPAI_HOST:$SWAPAI_PORT/api/tags" >/dev/null 2>&1 && return 0
-                ;;
-            llamacpp|vllm)
-                curl -fsS --max-time 1 \
-                    "http://$SWAPAI_HOST:$SWAPAI_PORT/v1/models" >/dev/null 2>&1 && return 0
-                ;;
-        esac
+        curl -fsS --max-time 1 \
+            "$(swapai_api_endpoint)/models" >/dev/null 2>&1 && return 0
         sleep 1
         attempt=$((attempt + 1))
     done
@@ -382,7 +376,7 @@ swapai_switch() {
 
     swapai_parse_profile_line "$profile"
     swapai_info "Active: $parsed_name"
-    swapai_info "Endpoint: http://$SWAPAI_HOST:$SWAPAI_PORT"
+    swapai_info "API: $(swapai_api_endpoint)"
 }
 
 swapai_stop() {
@@ -419,11 +413,60 @@ swapai_status() {
     swapai_info "Backend: $(swapai_active_value backend)"
     swapai_info "Model: $(swapai_active_value model)"
     swapai_info "PID: $(swapai_read_pid)"
-    swapai_info "Endpoint: http://$SWAPAI_HOST:$SWAPAI_PORT"
+    swapai_info "API: $(swapai_api_endpoint)"
+}
+
+swapai_runtime_endpoint() {
+    printf 'http://%s:%s\n' "$SWAPAI_HOST" "$SWAPAI_PORT"
+}
+
+swapai_api_endpoint() {
+    printf '%s/v1\n' "$(swapai_runtime_endpoint)"
 }
 
 swapai_endpoint() {
-    printf 'http://%s:%s\n' "$SWAPAI_HOST" "$SWAPAI_PORT"
+    swapai_api_endpoint
+}
+
+swapai_model() {
+    swapai_is_running || {
+        swapai_die "no runtime is active"
+        return 1
+    }
+    swapai_active_value model
+}
+
+swapai_chat() {
+    swapai_is_running || {
+        swapai_die "no runtime is active"
+        return 1
+    }
+    chat_backend=$(swapai_active_value backend)
+    [ "$chat_backend" != mock ] || {
+        swapai_die "the mock backend does not serve inference requests"
+        return 1
+    }
+    command -v curl >/dev/null 2>&1 || {
+        swapai_die "curl is required for chat requests"
+        return 1
+    }
+    chat_model=$(swapai_active_value model)
+    chat_prompt=${*:-Reply with exactly: ready}
+    escaped_chat_model=$(swapai_json_escape "$chat_model")
+    escaped_chat_prompt=$(swapai_json_escape "$chat_prompt")
+    chat_data="{\"model\":\"$escaped_chat_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped_chat_prompt\"}],\"stream\":false}"
+    chat_response=$(curl -fsS --max-time "$SWAPAI_MODEL_TIMEOUT" \
+        -H 'Content-Type: application/json' \
+        -d "$chat_data" "$(swapai_api_endpoint)/chat/completions") || {
+        swapai_die "chat request failed"
+        return 1
+    }
+    if command -v jq >/dev/null 2>&1; then
+        printf '%s\n' "$chat_response" | \
+            jq -r '.choices[0].message.content // .error.message // .'
+    else
+        printf '%s\n' "$chat_response"
+    fi
 }
 
 swapai_logs() {
@@ -456,13 +499,8 @@ swapai_benchmark() {
     bench_prompt=${*:-Reply with exactly: ready}
     escaped_prompt=$(swapai_json_escape "$bench_prompt")
     escaped_model=$(swapai_json_escape "$bench_model")
-    if [ "$bench_backend" = ollama ]; then
-        bench_url="http://$SWAPAI_HOST:$SWAPAI_PORT/api/generate"
-        bench_data="{\"model\":\"$escaped_model\",\"prompt\":\"$escaped_prompt\",\"stream\":false}"
-    else
-        bench_url="http://$SWAPAI_HOST:$SWAPAI_PORT/v1/chat/completions"
-        bench_data="{\"model\":\"$escaped_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped_prompt\"}],\"stream\":false}"
-    fi
+    bench_url="$(swapai_api_endpoint)/chat/completions"
+    bench_data="{\"model\":\"$escaped_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$escaped_prompt\"}],\"stream\":false}"
     result=$(curl -fsS -o "$SWAPAI_STATE_HOME/benchmark.json" \
         -w '%{time_total}' -H 'Content-Type: application/json' \
         -d "$bench_data" "$bench_url") || {
@@ -489,7 +527,7 @@ swapai_doctor() {
     swapai_info "SwapAI $SWAPAI_VERSION"
     swapai_info "Configuration: $SWAPAI_PROFILES"
     swapai_info "State: $SWAPAI_STATE_HOME"
-    swapai_info "Endpoint: http://$SWAPAI_HOST:$SWAPAI_PORT"
+    swapai_info "API: $(swapai_api_endpoint)"
     swapai_info "Tools:"
     swapai_doctor_line curl curl
     swapai_doctor_line Ollama ollama
@@ -512,6 +550,8 @@ swapai_main() {
         status) swapai_status "$@" ;;
         stop) swapai_stop "$@" ;;
         endpoint) swapai_endpoint "$@" ;;
+        model) swapai_model "$@" ;;
+        chat) swapai_chat "$@" ;;
         logs) swapai_logs "$@" ;;
         benchmark|bench) swapai_benchmark "$@" ;;
         doctor) swapai_doctor "$@" ;;
