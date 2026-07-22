@@ -2,7 +2,7 @@
 
 set -eu
 
-TEST_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+TEST_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_TMP=$(mktemp -d "${TMPDIR:-/tmp}/swapai-test.XXXXXX")
 SWAPAI_TEST_SHELL=${SWAPAI_TEST_SHELL:-sh}
 
@@ -36,13 +36,15 @@ if swapai_cli add added ollama duplicate >/dev/null 2>&1; then
     printf 'Expected duplicate profile creation to fail\n' >&2
     exit 1
 fi
-printf 'test\tmock\tfixture\n' >> "$SWAPAI_PROFILES"
-printf 'broken\tunsupported\tfixture\n' >> "$SWAPAI_PROFILES"
-printf 'fakeollama\tollama\tfixture-model\n' >> "$SWAPAI_PROFILES"
-printf 'attached\tollama-attach\tfixture-model\n' >> "$SWAPAI_PROFILES"
-printf 'fakellama\tllamacpp\t%s\t--ctx-size 1024\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
-printf 'fakevllm\tvllm\tfixture/model\t--dtype auto\n' >> "$SWAPAI_PROFILES"
-printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
+{
+    printf 'test\tmock\tfixture\n'
+    printf 'broken\tunsupported\tfixture\n'
+    printf 'fakeollama\tollama\tfixture-model\n'
+    printf 'attached\tollama-attach\tfixture-model\n'
+    printf 'fakellama\tllamacpp\t%s\t--ctx-size 1024\n' "$TEST_ROOT/README.md"
+    printf 'fakevllm\tvllm\tfixture/model\t--dtype auto\n'
+    printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md"
+} >> "$SWAPAI_PROFILES"
 
 list_output=$(swapai_cli list)
 assert_contains "$list_output" "coder"

@@ -20,7 +20,7 @@ check:
 	fi
 
 shellcheck:
-	shellcheck $(SHELL_FILES)
+	shellcheck -x -P SCRIPTDIR $(SHELL_FILES)
 
 install:
 	./install.sh

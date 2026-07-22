@@ -1,5 +1,7 @@
 #!/bin/sh
 
+SWAPAI_ROOT=${SWAPAI_ROOT:?SWAPAI_ROOT must point to the SwapAI installation}
+
 : "${SWAPAI_VERSION:=0.2.0}"
 : "${SWAPAI_HOST:=127.0.0.1}"
 : "${SWAPAI_PORT:=11435}"
@@ -153,6 +155,8 @@ swapai_parse_profile_line() {
     profile_line=$1
     old_ifs=$IFS
     IFS="$(printf '\t')"
+    # Profile fields intentionally split only on literal tab characters.
+    # shellcheck disable=SC2086
     set -- $profile_line
     IFS=$old_ifs
     parsed_name=$1
