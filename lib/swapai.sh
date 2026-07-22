@@ -412,6 +412,18 @@ swapai_port_in_use() {
     return 1
 }
 
+swapai_port_owned_by() {
+    ownership_port=$1
+    ownership_pid=$2
+    [ -n "$ownership_pid" ] || return 1
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$ownership_port" -sTCP:LISTEN -t 2>/dev/null | \
+            awk -v wanted="$ownership_pid" '$1 == wanted { found = 1 } END { exit !found }'
+        return $?
+    fi
+    swapai_pid_active "$ownership_pid"
+}
+
 swapai_activate_profile_line() {
     activation_profile=$1
     swapai_parse_profile_line "$activation_profile"
@@ -837,6 +849,33 @@ swapai_doctor_profiles() {
     return "$profile_status"
 }
 
+swapai_doctor_ports() {
+    doctor_pid=$(swapai_read_pid 2>/dev/null || printf '')
+    doctor_backend=$(swapai_active_value backend 2>/dev/null || printf '')
+
+    if [ "$SWAPAI_OLLAMA_PORT" != "$SWAPAI_PORT" ] && \
+        swapai_port_in_use "$SWAPAI_OLLAMA_PORT"; then
+        if [ "$doctor_backend" = ollama-attach ]; then
+            printf '  [ok]      Native Ollama attached on port %s\n' "$SWAPAI_OLLAMA_PORT"
+        else
+            printf '  [warn]    Native Ollama is running on port %s; a managed Ollama on %s may share its model store and GPU\n' \
+                "$SWAPAI_OLLAMA_PORT" "$SWAPAI_PORT"
+        fi
+    else
+        printf '  [ok]      Native Ollama port %s is available\n' "$SWAPAI_OLLAMA_PORT"
+    fi
+
+    if swapai_port_in_use "$SWAPAI_PORT"; then
+        if swapai_port_owned_by "$SWAPAI_PORT" "$doctor_pid"; then
+            printf '  [ok]      SwapAI port %s is owned by PID %s\n' "$SWAPAI_PORT" "$doctor_pid"
+        else
+            printf '  [warn]    SwapAI port %s is occupied by a process SwapAI does not own\n' "$SWAPAI_PORT"
+        fi
+    else
+        printf '  [ok]      SwapAI port %s is available\n' "$SWAPAI_PORT"
+    fi
+}
+
 swapai_doctor() {
     swapai_info "SwapAI $SWAPAI_VERSION"
     swapai_info "Configuration: $SWAPAI_PROFILES"
@@ -845,6 +884,8 @@ swapai_doctor() {
     swapai_info "Profiles:"
     doctor_status=0
     swapai_doctor_profiles || doctor_status=1
+    swapai_info "Ports:"
+    swapai_doctor_ports
     swapai_info "Tools:"
     swapai_doctor_line curl curl
     swapai_doctor_line Ollama ollama

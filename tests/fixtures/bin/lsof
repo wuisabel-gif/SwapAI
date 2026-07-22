@@ -1,0 +1,16 @@
+#!/bin/sh
+
+checked_port=
+for argument do
+    case $argument in
+        -iTCP:*) checked_port=${argument#-iTCP:} ;;
+    esac
+done
+
+case " ${SWAPAI_TEST_LSOF_PORTS:-} " in
+    *" $checked_port "*)
+        printf '%s\n' "${SWAPAI_TEST_LSOF_PID:-99999}"
+        exit 0
+        ;;
+esac
+exit 1

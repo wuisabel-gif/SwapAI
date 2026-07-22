@@ -168,11 +168,14 @@ fi
 
 BAD_PROFILES="$TEST_TMP/bad-profiles.tsv"
 printf 'spaces ollama broken-model\n' > "$BAD_PROFILES"
-if doctor_output=$(SWAPAI_PROFILES="$BAD_PROFILES" swapai_cli doctor 2>&1); then
+if doctor_output=$(SWAPAI_PROFILES="$BAD_PROFILES" \
+    SWAPAI_TEST_LSOF_PORTS="11434 11435" swapai_cli doctor 2>&1); then
     printf 'Expected malformed profiles to fail doctor\n' >&2
     exit 1
 fi
 assert_contains "$doctor_output" "line 1 uses spaces"
+assert_contains "$doctor_output" "Native Ollama is running on port 11434"
+assert_contains "$doctor_output" "SwapAI port 11435 is occupied by a process SwapAI does not own"
 
 SWAPAI_INSTALL_DIR="$TEST_TMP/bin" \
 SWAPAI_SHARE_DIR="$TEST_TMP/share/swapai" \

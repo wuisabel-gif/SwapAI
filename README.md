@@ -187,6 +187,10 @@ external Ollama process. Its API endpoint is `http://127.0.0.1:11434/v1` by
 default, so clients must use the endpoint printed by `swapai endpoint`. Set
 `SWAPAI_OLLAMA_PORT` if the existing service uses another port.
 
+`swapai doctor` checks both the native Ollama port and SwapAI's configured
+endpoint. It warns when a native daemon could compete with a separately managed
+Ollama process, or when the SwapAI port belongs to an untracked process.
+
 ## Configuration
 
 Environment variables make SwapAI easy to script and test:
