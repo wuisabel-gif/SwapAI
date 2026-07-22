@@ -1,6 +1,6 @@
 #!/bin/sh
 
-: "${SWAPAI_VERSION:=0.1.0}"
+: "${SWAPAI_VERSION:=0.2.0}"
 : "${SWAPAI_HOST:=127.0.0.1}"
 : "${SWAPAI_PORT:=11435}"
 : "${SWAPAI_CONFIG_HOME:=${XDG_CONFIG_HOME:-$HOME/.config}/swapai}"

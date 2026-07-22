@@ -1,13 +1,13 @@
 # SwapAI
 
-SwapAI is a shell-first control plane for local AI inference. It gives Ollama,
-llama.cpp, and vLLM one small command-line interface and one predictable local
-endpoint.
+SwapAI is a shell-first orchestrator for local AI runtimes. It gives Ollama,
+llama.cpp, and vLLM one command-line interface and one predictable
+OpenAI-compatible API.
 
 ```text
 Your editor / app / agent
           |
-          | http://127.0.0.1:11435
+          | http://127.0.0.1:11435/v1
           v
        SwapAI
        /  |  \
@@ -30,11 +30,19 @@ swapai init
 ${EDITOR:-vi} "$HOME/.config/swapai/profiles.tsv"
 swapai switch coder
 swapai status
+swapai endpoint
+swapai model
+swapai chat "Explain this code"
 ```
 
-By default SwapAI listens at `http://127.0.0.1:11435`. Point an
-OpenAI-compatible client at `/v1` when using llama.cpp or vLLM. Ollama retains
-its native endpoints, such as `/api/generate`, on the same host and port.
+By default, every supported runtime exposes its OpenAI-compatible API at
+`http://127.0.0.1:11435/v1`. Applications can keep one base URL while SwapAI
+changes the runtime behind it. The active model name is available from
+`swapai model` or the standard `/v1/models` endpoint.
+
+Ollama, llama.cpp, and vLLM each implement `/v1/models` and
+`/v1/chat/completions`. Their backend-native endpoints remain available on the
+same host and port when advanced runtime-specific behavior is needed.
 
 ## Commands
 
@@ -44,14 +52,17 @@ swapai list                 List configured profiles
 swapai switch <profile>     Stop the current runtime and start another
 swapai status               Show the active profile, backend, model, and PID
 swapai stop                 Gracefully stop the managed runtime
-swapai endpoint             Print the stable base URL
+swapai endpoint             Print the OpenAI-compatible /v1 base URL
+swapai model                Print the active model identifier
+swapai chat [prompt]         Send one OpenAI-compatible chat request
 swapai logs [--follow]      Read or follow runtime logs
 swapai benchmark [prompt]   Time one non-streaming inference request
 swapai doctor               Check runtime and tool availability
 ```
 
 `use`, `ls`, and `bench` are short aliases for `switch`, `list`, and
-`benchmark`.
+`benchmark`. Both `chat` and `benchmark` use the same
+`/v1/chat/completions` contract across every production backend.
 
 Switches are failure-safe: if a replacement runtime cannot start or become
 healthy, SwapAI attempts to restore the previously active profile. It also
@@ -127,11 +138,11 @@ Release history is recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current scope
 
-This first version intentionally focuses on deterministic local switching. A
-future daemon or proxy could add zero-downtime warm pools, request routing,
-fallbacks, and one OpenAI-compatible API across every backend. Today, switching
-is stop-then-start, and the endpoint stays stable while its backend-native API
-shape may differ.
+SwapAI currently standardizes the OpenAI Chat Completions and Models endpoints.
+Individual runtimes may support different optional OpenAI fields and additional
+native APIs. A future translation proxy could normalize those differences,
+provide stable model aliases, and add request routing or fallbacks. Switching
+remains stop-then-start with automatic rollback when the replacement fails.
 
 ## License
 

@@ -109,6 +109,6 @@ SWAPAI_INSTALL_DIR="$TEST_TMP/bin" \
 SWAPAI_SHARE_DIR="$TEST_TMP/share/swapai" \
     "$TEST_ROOT/install.sh" >/dev/null
 installed_version=$("$TEST_TMP/bin/swapai" version)
-assert_contains "$installed_version" "swapai 0.1.0"
+assert_contains "$installed_version" "swapai 0.2.0"
 
 printf 'All SwapAI tests passed.\n'

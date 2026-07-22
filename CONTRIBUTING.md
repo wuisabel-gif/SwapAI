@@ -32,7 +32,8 @@ An adapter should provide the same lifecycle contract as existing backends:
 - validate required executables and model configuration;
 - start on `SWAPAI_HOST` and `SWAPAI_PORT`;
 - remain attached to a single managed PID;
-- expose a deterministic readiness check;
+- expose `/v1/models` for deterministic readiness checks;
+- accept non-streaming requests at `/v1/chat/completions`;
 - stop cleanly on `TERM`;
 - write runtime output to the standard SwapAI log;
 - fail without replacing a healthy active profile.
@@ -44,4 +45,3 @@ without installing the actual inference engine.
 
 Include the output of `swapai doctor`, the relevant profile with secrets or
 private paths removed, and the last useful lines from `swapai logs`.
-
