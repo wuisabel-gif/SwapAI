@@ -45,7 +45,7 @@ SwapAI turns that work into one explicit, failure-safe operation:
 It can also scope a runtime to one command with `swapai run`, or resolve an
 exact model ID with `swapai switch --for-model`. SwapAI never performs inference
 or stays in the request path; it makes local runtime lifecycle changes visible,
-repeatable, and easy to audit. The complete control layer is currently 927
+repeatable, and easy to audit. The complete control layer is currently 961
 lines of POSIX shell in [`lib/swapai.sh`](lib/swapai.sh).
 
 ## Quick start

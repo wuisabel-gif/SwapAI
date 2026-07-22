@@ -2,7 +2,7 @@
 
 SWAPAI_ROOT=${SWAPAI_ROOT:?SWAPAI_ROOT must point to the SwapAI installation}
 
-: "${SWAPAI_VERSION:=0.2.0}"
+: "${SWAPAI_VERSION:=0.3.0}"
 : "${SWAPAI_HOST:=127.0.0.1}"
 : "${SWAPAI_PORT:=11435}"
 : "${SWAPAI_OLLAMA_PORT:=11434}"

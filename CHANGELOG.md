@@ -6,6 +6,14 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Planned
+
+- Persistent benchmark history and comparisons.
+- Warm-model pools and policy-based routing.
+- Optional translation for backend-specific API differences.
+
+## 0.3.0 - 2026-07-22
+
 ### Added
 
 - Exact model-to-profile switching with `switch --for-model`.
@@ -25,12 +33,6 @@ The project follows [Semantic Versioning](https://semver.org/).
   of a two-to-four-token response.
 - Installer version tests now derive their expectation from the program's
   version declaration.
-
-### Planned
-
-- Persistent benchmark history and comparisons.
-- Warm-model pools and policy-based routing.
-- Optional translation for backend-specific API differences.
 
 ## 0.2.0 - 2026-07-21
 
