@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -u
+
+SWAPAI_ENTRY=$0
+while [ -L "$SWAPAI_ENTRY" ]; do
+    SWAPAI_LINK=$(readlink "$SWAPAI_ENTRY")
+    case $SWAPAI_LINK in
+        /*) SWAPAI_ENTRY=$SWAPAI_LINK ;;
+        *) SWAPAI_ENTRY=$(dirname -- "$SWAPAI_ENTRY")/$SWAPAI_LINK ;;
+    esac
+done
+SWAPAI_BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$SWAPAI_ENTRY")" && pwd)
+SWAPAI_ROOT=$(CDPATH= cd -- "$SWAPAI_BIN_DIR/.." && pwd)
+
+# shellcheck source=../lib/swapai.sh
+. "$SWAPAI_ROOT/lib/swapai.sh"
+
+swapai_main "$@"

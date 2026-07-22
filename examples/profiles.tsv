@@ -1,0 +1,8 @@
+# name<TAB>backend<TAB>model<TAB>optional runtime arguments
+coder	ollama	qwen2.5-coder:7b
+chat	ollama	llama3.2:3b
+fast	ollama	gemma3:1b
+# Replace the paths below before using these profiles.
+gguf	llamacpp	/path/to/model.gguf	--ctx-size 4096 --n-gpu-layers 99
+server	vllm	Qwen/Qwen2.5-7B-Instruct	--dtype auto
+
