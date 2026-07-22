@@ -31,8 +31,10 @@ SwapAI — one command for local AI runtimes
 
 Usage:
   swapai init
+  swapai add <profile> <backend> <model> [arguments...]
   swapai list
   swapai switch <profile>
+  swapai switch --for-model <model>
   swapai status
   swapai stop
   swapai endpoint
@@ -82,6 +84,68 @@ swapai_profile() {
         }
         END { if (!found) exit 1 }
     ' "$SWAPAI_PROFILES"
+}
+
+swapai_profile_for_model() {
+    profile_model=$1
+    swapai_require_profiles || return 1
+    awk -F '\t' -v wanted="$profile_model" '
+        $0 !~ /^[[:space:]]*#/ && NF >= 3 && $3 == wanted {
+            print $0
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' "$SWAPAI_PROFILES"
+}
+
+swapai_add() {
+    [ "$#" -ge 3 ] || {
+        swapai_die "usage: swapai add <profile> <backend> <model> [arguments...]"
+        return 1
+    }
+    added_name=$1
+    added_backend=$2
+    added_model=$3
+    shift 3
+    added_arguments=$*
+
+    case $added_name in
+        ''|*[!A-Za-z0-9_.-]*)
+            swapai_die "profile names may contain only letters, numbers, '.', '_', and '-'"
+            return 1
+            ;;
+    esac
+    case $added_backend in
+        ollama|ollama-attach|llamacpp|vllm|mock) ;;
+        *)
+            swapai_die "unsupported backend '$added_backend'"
+            return 1
+            ;;
+    esac
+    case $added_model in
+        ''|*[[:space:]]*)
+            swapai_die "model must be a non-empty value without whitespace"
+            return 1
+            ;;
+    esac
+
+    swapai_ensure_dirs || return 1
+    if [ ! -f "$SWAPAI_PROFILES" ]; then
+        printf '# name<TAB>backend<TAB>model<TAB>optional runtime arguments\n' > "$SWAPAI_PROFILES"
+    elif swapai_profile "$added_name" >/dev/null 2>&1; then
+        swapai_die "profile '$added_name' already exists"
+        return 1
+    fi
+
+    if [ -n "$added_arguments" ]; then
+        printf '%s\t%s\t%s\t%s\n' \
+            "$added_name" "$added_backend" "$added_model" "$added_arguments" >> "$SWAPAI_PROFILES"
+    else
+        printf '%s\t%s\t%s\n' \
+            "$added_name" "$added_backend" "$added_model" >> "$SWAPAI_PROFILES"
+    fi
+    swapai_info "Added profile: $added_name"
 }
 
 swapai_parse_profile_line() {
@@ -338,15 +402,33 @@ swapai_activate_profile_line() {
 }
 
 swapai_switch() {
-    [ "$#" -eq 1 ] || {
-        swapai_die "usage: swapai switch <profile>"
-        return 1
-    }
-    requested=$1
-    profile=$(swapai_profile "$requested") || {
-        swapai_die "unknown profile '$requested'"
-        return 1
-    }
+    case $# in
+        1)
+            requested=$1
+            profile=$(swapai_profile "$requested") || {
+                swapai_die "unknown profile '$requested'"
+                return 1
+            }
+            ;;
+        2)
+            [ "$1" = --for-model ] || {
+                swapai_die "usage: swapai switch <profile> | swapai switch --for-model <model>"
+                return 1
+            }
+            requested_model=$2
+            profile=$(swapai_profile_for_model "$requested_model") || {
+                swapai_die "no profile maps model '$requested_model'"
+                return 1
+            }
+            swapai_parse_profile_line "$profile"
+            requested=$parsed_name
+            swapai_info "Model $requested_model maps to profile $requested."
+            ;;
+        *)
+            swapai_die "usage: swapai switch <profile> | swapai switch --for-model <model>"
+            return 1
+            ;;
+    esac
     swapai_validate_profile_line "$profile" || return 1
 
     swapai_ensure_dirs || return 1
@@ -523,11 +605,45 @@ swapai_doctor_line() {
     fi
 }
 
+swapai_doctor_profiles() {
+    if [ ! -f "$SWAPAI_PROFILES" ]; then
+        printf '  [missing] %-12s %s\n' "Profiles" "$SWAPAI_PROFILES"
+        return 1
+    fi
+
+    awk -F '\t' '
+        /^[[:space:]]*($|#)/ { next }
+        NF < 3 {
+            count = split($0, fields, /[[:space:]]+/)
+            if (count >= 3) {
+                printf "  [invalid] Profiles     line %d uses spaces; use literal tabs between name, backend, and model\n", NR
+            } else {
+                printf "  [invalid] Profiles     line %d must contain at least name, backend, and model\n", NR
+            }
+            invalid = 1
+            next
+        }
+        $1 == "" || $2 == "" || $3 == "" {
+            printf "  [invalid] Profiles     line %d contains an empty required field\n", NR
+            invalid = 1
+        }
+        END { exit invalid }
+    ' "$SWAPAI_PROFILES"
+    profile_status=$?
+    if [ "$profile_status" -eq 0 ]; then
+        printf '  [ok]      %-12s %s\n' "Profiles" "$SWAPAI_PROFILES"
+    fi
+    return "$profile_status"
+}
+
 swapai_doctor() {
     swapai_info "SwapAI $SWAPAI_VERSION"
     swapai_info "Configuration: $SWAPAI_PROFILES"
     swapai_info "State: $SWAPAI_STATE_HOME"
     swapai_info "API: $(swapai_api_endpoint)"
+    swapai_info "Profiles:"
+    doctor_status=0
+    swapai_doctor_profiles || doctor_status=1
     swapai_info "Tools:"
     swapai_doctor_line curl curl
     swapai_doctor_line Ollama ollama
@@ -538,6 +654,7 @@ swapai_doctor() {
     else
         printf '  [missing] %-12s %s\n' "vLLM" "Python package"
     fi
+    return "$doctor_status"
 }
 
 swapai_main() {
@@ -545,6 +662,7 @@ swapai_main() {
     [ "$#" -eq 0 ] || shift
     case $command_name in
         init) swapai_init "$@" ;;
+        add) swapai_add "$@" ;;
         list|ls) swapai_list "$@" ;;
         switch|use) swapai_switch "$@" ;;
         status) swapai_status "$@" ;;

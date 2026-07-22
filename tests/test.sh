@@ -24,6 +24,12 @@ assert_contains() {
 }
 
 "$TEST_ROOT/bin/swapai" init >/dev/null
+add_output=$("$TEST_ROOT/bin/swapai" add added ollama added-model)
+assert_contains "$add_output" "Added profile: added"
+if "$TEST_ROOT/bin/swapai" add added ollama duplicate >/dev/null 2>&1; then
+    printf 'Expected duplicate profile creation to fail\n' >&2
+    exit 1
+fi
 printf 'test\tmock\tfixture\n' >> "$SWAPAI_PROFILES"
 printf 'broken\tunsupported\tfixture\n' >> "$SWAPAI_PROFILES"
 printf 'fakeollama\tollama\tfixture-model\n' >> "$SWAPAI_PROFILES"
@@ -33,10 +39,15 @@ printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
 
 list_output=$("$TEST_ROOT/bin/swapai" list)
 assert_contains "$list_output" "coder"
+assert_contains "$list_output" "added"
 assert_contains "$list_output" "test"
 
 switch_output=$("$TEST_ROOT/bin/swapai" switch test)
 assert_contains "$switch_output" "Active: test"
+
+model_switch_output=$("$TEST_ROOT/bin/swapai" switch --for-model fixture)
+assert_contains "$model_switch_output" "Model fixture maps to profile test."
+assert_contains "$model_switch_output" "Active: test"
 
 status_output=$("$TEST_ROOT/bin/swapai" status)
 assert_contains "$status_output" "Status: running"
@@ -104,6 +115,14 @@ if "$TEST_ROOT/bin/swapai" switch missing >/dev/null 2>&1; then
     printf 'Expected unknown profile to fail\n' >&2
     exit 1
 fi
+
+BAD_PROFILES="$TEST_TMP/bad-profiles.tsv"
+printf 'spaces ollama broken-model\n' > "$BAD_PROFILES"
+if doctor_output=$(SWAPAI_PROFILES="$BAD_PROFILES" "$TEST_ROOT/bin/swapai" doctor 2>&1); then
+    printf 'Expected malformed profiles to fail doctor\n' >&2
+    exit 1
+fi
+assert_contains "$doctor_output" "line 1 uses spaces"
 
 SWAPAI_INSTALL_DIR="$TEST_TMP/bin" \
 SWAPAI_SHARE_DIR="$TEST_TMP/share/swapai" \

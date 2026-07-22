@@ -48,8 +48,12 @@ same host and port when advanced runtime-specific behavior is needed.
 
 ```text
 swapai init                 Create the user profile file
+swapai add NAME BACKEND MODEL [ARGS...]
+                            Add a profile without editing TSV
 swapai list                 List configured profiles
 swapai switch <profile>     Stop the current runtime and start another
+swapai switch --for-model MODEL
+                            Resolve an exact model name to a profile and switch
 swapai status               Show the active profile, backend, model, and PID
 swapai stop                 Gracefully stop the managed runtime
 swapai endpoint             Print the OpenAI-compatible /v1 base URL
@@ -85,7 +89,22 @@ gguf   llamacpp  /models/qwen-coder.gguf       --ctx-size 8192 --n-gpu-layers 99
 serve  vllm      Qwen/Qwen2.5-7B-Instruct      --dtype auto
 ```
 
-The separators must be literal tab characters. Supported backend values are:
+The separators must be literal tab characters. `swapai doctor` reports the
+exact line number when a profile uses spaces instead, and `swapai add` avoids
+manual TSV editing for the common case:
+
+```sh
+swapai add coder ollama qwen2.5-coder:7b
+swapai add gguf llamacpp /models/qwen.gguf --ctx-size 8192
+```
+
+Agents can request a configured model without knowing its profile alias:
+
+```sh
+swapai switch --for-model qwen2.5-coder:7b
+```
+
+The first exact model match wins. Supported backend values are:
 
 - `ollama`: starts a dedicated `ollama serve` process on the SwapAI endpoint.
 - `llamacpp`: runs `llama-server`; the model field is a GGUF path.
