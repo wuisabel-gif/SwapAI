@@ -120,16 +120,17 @@ model_output=$(swapai_cli model)
 chat_output=$(swapai_cli chat "hello from SwapAI")
 assert_contains "$chat_output" "fixture response"
 
-benchmark_output=$(swapai_cli benchmark "benchmark request")
-assert_contains "$benchmark_output" "Non-streaming total: 0.012s"
-assert_contains "$benchmark_output" "Streaming total: 0.020s"
-assert_contains "$benchmark_output" "Time to first token: 0.004s"
-assert_contains "$benchmark_output" "Generation time: 0.016s"
-assert_contains "$benchmark_output" "Completion tokens: 4"
-assert_contains "$benchmark_output" "Throughput: 250.0 tokens/s"
+benchmark_output=$(swapai_cli benchmark)
+assert_contains "$benchmark_output" "Non-streaming total: 3.200s"
+assert_contains "$benchmark_output" "Streaming total: 3.100s"
+assert_contains "$benchmark_output" "Time to first token: 0.100s"
+assert_contains "$benchmark_output" "Generation time: 3.000s"
+assert_contains "$benchmark_output" "Completion tokens: 150"
+assert_contains "$benchmark_output" "Throughput: 50.0 tokens/s"
 api_capture=$(sed -n '1,100p' "$SWAPAI_TEST_CAPTURE")
 assert_contains "$api_capture" "/v1/chat/completions"
 assert_contains "$api_capture" '"stream":true'
+assert_contains "$api_capture" "Write a 150 word summary of how TCP congestion control works."
 
 if SWAPAI_LLAMA_SERVER="$FIXTURE_BIN/fail-runtime" \
     swapai_cli switch failllama >/dev/null 2>&1; then
@@ -182,6 +183,14 @@ SWAPAI_INSTALL_DIR="$TEST_TMP/bin" \
 SWAPAI_SHARE_DIR="$TEST_TMP/share/swapai" \
     "$TEST_ROOT/install.sh" >/dev/null
 installed_version=$("$TEST_TMP/bin/swapai" version)
-assert_contains "$installed_version" "swapai 0.2.0"
+# The single-quoted expression intentionally matches the literal shell declaration.
+# shellcheck disable=SC2016
+expected_version=$(sed -n 's/^: "${SWAPAI_VERSION:=\([0-9][0-9.]*\)}"$/\1/p' \
+    "$TEST_ROOT/lib/swapai.sh")
+[ -n "$expected_version" ] || {
+    printf 'Could not read SWAPAI_VERSION from lib/swapai.sh\n' >&2
+    exit 1
+}
+assert_contains "$installed_version" "swapai $expected_version"
 
 printf 'All SwapAI tests passed.\n'

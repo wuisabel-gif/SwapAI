@@ -792,7 +792,11 @@ swapai_benchmark() {
         swapai_die "the mock backend does not serve inference requests"
         return 1
     }
-    bench_prompt=${*:-Reply with exactly: ready}
+    if [ "$#" -eq 0 ]; then
+        bench_prompt='Write a 150 word summary of how TCP congestion control works.'
+    else
+        bench_prompt=$*
+    fi
     escaped_prompt=$(swapai_json_escape "$bench_prompt")
     escaped_model=$(swapai_json_escape "$bench_model")
     bench_url="$(swapai_api_endpoint)/chat/completions"

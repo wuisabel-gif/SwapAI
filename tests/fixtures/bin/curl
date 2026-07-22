@@ -32,14 +32,14 @@ case $captured_arguments in
             *'"stream":true'*)
                 response='data: {"choices":[{"delta":{"content":"ready"}}]}
 
-data: {"choices":[],"usage":{"completion_tokens":4}}
+data: {"choices":[],"usage":{"completion_tokens":150}}
 
 data: [DONE]'
-                metrics='0.004 0.020'
+                metrics='0.100 3.100'
                 ;;
             *)
-                response='{"choices":[{"message":{"content":"fixture response"}}],"usage":{"completion_tokens":4}}'
-                metrics='0.002 0.012'
+                response='{"choices":[{"message":{"content":"fixture response"}}],"usage":{"completion_tokens":150}}'
+                metrics='0.100 3.200'
                 ;;
         esac
         if [ -n "$output_file" ]; then

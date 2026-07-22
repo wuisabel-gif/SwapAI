@@ -21,6 +21,10 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 - Ollama attach mode now unloads its pinned model when detaching by default;
   `SWAPAI_ATTACH_UNLOAD=0` keeps the model warm.
+- The default benchmark prompt requests a meaningful generation window instead
+  of a two-to-four-token response.
+- Installer version tests now derive their expectation from the program's
+  version declaration.
 
 ### Planned
 
