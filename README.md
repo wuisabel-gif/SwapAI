@@ -34,19 +34,25 @@ proxy automatically start and route to the matching backend. It supports a
 broad proxy surface, concurrent-model policies, a web interface, and advanced
 routing features that SwapAI does not attempt to reproduce.
 
-SwapAI is intentionally smaller and more explicit:
+| Dimension | SwapAI | llama-swap |
+| --- | --- | --- |
+| Switch trigger | Explicit CLI, agent, or scoped `run` session | `model` field in each API request |
+| Request path | Client talks directly to the selected runtime | Proxy remains between client and runtime |
+| Runtime residency | One managed runtime at a time | One model by default, with configurable concurrent-model policies |
+| Control layer | Auditable POSIX shell plus standard system tools | Prebuilt Go proxy binary |
+| Configuration | Small tab-separated profile map with `add` and `doctor` helpers | YAML model commands, hooks, routing, and policy configuration |
 
-- Its control layer is auditable POSIX shell rather than a compiled proxy.
-- Ollama is a first-class backend with installed-model and load verification.
-- A human or agent selects a profile before inference, with rollback if the
-  replacement fails.
-- It manages one runtime at a time and exposes the runtime directly instead of
-  remaining in the request path.
+SwapAI additionally treats Ollama as a first-class backend with installed-model
+and load verification. A human or agent makes each lifecycle transition
+explicit, and a failed replacement rolls back to the prior profile. The entire
+control layer is currently 927 lines of POSIX shell in
+[`lib/swapai.sh`](lib/swapai.sh).
 
-Choose SwapAI when you want a shell-native lifecycle tool whose actions are
-visible and deliberate. Choose llama-swap when transparent request-driven
-routing is the goal. `swapai switch --for-model MODEL` provides an opt-in bridge
-for agents that know a model ID but should not edit profile configuration.
+If you want per-request hot swapping behind one endpoint, use llama-swap. If
+you want one auditable script designed to keep one managed runtime active and
+warn about GPU or port conflicts, use SwapAI. `swapai switch --for-model MODEL`
+provides an opt-in bridge for agents that know a model ID but should not edit
+profile configuration.
 
 ## Quick start
 
