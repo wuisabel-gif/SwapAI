@@ -83,6 +83,8 @@ swapai list                 List configured profiles
 swapai switch <profile>     Stop the current runtime and start another
 swapai switch --for-model MODEL
                             Resolve an exact model name to a profile and switch
+swapai run PROFILE -- COMMAND...
+                            Run a command in a temporary runtime session
 swapai status               Show the active profile, backend, model, and PID
 swapai stop                 Gracefully stop the managed runtime
 swapai endpoint             Print the OpenAI-compatible /v1 base URL
@@ -96,6 +98,14 @@ swapai doctor               Check runtime and tool availability
 `use`, `ls`, and `bench` are short aliases for `switch`, `list`, and
 `benchmark`. Both `chat` and `benchmark` use the same
 `/v1/chat/completions` contract across every production backend.
+
+`swapai run` scopes a runtime switch to one command. It restores the previous
+profile afterward—even when the command fails or receives an interrupt—and
+stops the temporary runtime when no profile was previously active:
+
+```sh
+swapai run coder -- ./run-evaluation.sh
+```
 
 `benchmark` makes one non-streaming request for a complete response and one
 streaming request for time-to-first-token. It reports `completion_tokens`,

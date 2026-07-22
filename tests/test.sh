@@ -38,6 +38,7 @@ if swapai_cli add added ollama duplicate >/dev/null 2>&1; then
 fi
 {
     printf 'test\tmock\tfixture\n'
+    printf 'testb\tmock\tfixture-b\n'
     printf 'broken\tunsupported\tfixture\n'
     printf 'fakeollama\tollama\tfixture-model\n'
     printf 'attached\tollama-attach\tfixture-model\n'
@@ -62,6 +63,17 @@ status_output=$(swapai_cli status)
 assert_contains "$status_output" "Status: running"
 assert_contains "$status_output" "Backend: mock"
 assert_contains "$status_output" "Model: fixture"
+
+run_output=$(swapai_cli run testb -- true)
+assert_contains "$run_output" "Restoring test..."
+run_restored_status=$(swapai_cli status)
+assert_contains "$run_restored_status" "Profile: test"
+if swapai_cli run testb -- false >/dev/null 2>&1; then
+    printf 'Expected a failing session command to preserve its exit status\n' >&2
+    exit 1
+fi
+run_failed_status=$(swapai_cli status)
+assert_contains "$run_failed_status" "Profile: test"
 
 if swapai_cli switch broken >/dev/null 2>&1; then
     printf 'Expected broken runtime startup to fail\n' >&2
@@ -131,6 +143,12 @@ endpoint_output=$(swapai_cli endpoint)
 swapai_cli stop >/dev/null
 if swapai_cli status >/dev/null 2>&1; then
     printf 'Expected stopped status to return non-zero\n' >&2
+    exit 1
+fi
+
+swapai_cli run testb -- true >/dev/null
+if swapai_cli status >/dev/null 2>&1; then
+    printf 'Expected session without a previous runtime to stop afterward\n' >&2
     exit 1
 fi
 

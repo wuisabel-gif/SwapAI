@@ -38,6 +38,7 @@ Usage:
   swapai list
   swapai switch <profile>
   swapai switch --for-model <model>
+  swapai run <profile> -- <command...>
   swapai status
   swapai stop
   swapai endpoint
@@ -500,6 +501,55 @@ swapai_switch() {
     swapai_info "API: $(swapai_api_endpoint)"
 }
 
+swapai_run_restore() {
+    trap - HUP INT TERM
+    if [ "$run_had_previous" = yes ]; then
+        if [ "$run_previous" != "$run_profile" ]; then
+            swapai_info "Restoring $run_previous..."
+            swapai_switch "$run_previous"
+            return $?
+        fi
+        return 0
+    fi
+    swapai_stop quiet
+}
+
+swapai_run() {
+    [ "$#" -ge 3 ] && [ "$2" = -- ] || {
+        swapai_die "usage: swapai run <profile> -- <command...>"
+        return 1
+    }
+
+    run_profile=$1
+    shift 2
+    run_previous=$(swapai_active_value name 2>/dev/null || printf '')
+    if [ -n "$run_previous" ]; then
+        run_had_previous=yes
+    else
+        run_had_previous=no
+    fi
+
+    swapai_switch "$run_profile" || return 1
+
+    run_signal_status=
+    trap 'run_signal_status=129' HUP
+    trap 'run_signal_status=130' INT
+    trap 'run_signal_status=143' TERM
+    "$@"
+    run_status=$?
+    trap - HUP INT TERM
+    if [ -n "$run_signal_status" ]; then
+        run_status=$run_signal_status
+    fi
+
+    run_restore_status=0
+    swapai_run_restore || run_restore_status=$?
+    if [ "$run_status" -ne 0 ]; then
+        return "$run_status"
+    fi
+    return "$run_restore_status"
+}
+
 swapai_stop() {
     stop_mode=${1:-normal}
     stop_backend=$(swapai_active_value backend 2>/dev/null || true)
@@ -779,6 +829,7 @@ swapai_main() {
         add) swapai_add "$@" ;;
         list|ls) swapai_list "$@" ;;
         switch|use) swapai_switch "$@" ;;
+        run) swapai_run "$@" ;;
         status) swapai_status "$@" ;;
         stop) swapai_stop "$@" ;;
         endpoint) swapai_endpoint "$@" ;;
