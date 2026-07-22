@@ -26,33 +26,27 @@ Your editor / app / agent
 SwapAI is an orchestrator, not an inference engine. The selected backend still
 does the model computation.
 
-## Why not llama-swap?
+## Why bother?
 
-[llama-swap](https://github.com/mostlygeek/llama-swap) is the stronger choice
-when clients should select a model in each OpenAI-compatible request and have a
-proxy automatically start and route to the matching backend. It supports a
-broad proxy surface, concurrent-model policies, a web interface, and advanced
-routing features that SwapAI does not attempt to reproduce.
+Local AI runtimes disagree on startup commands, model arguments, ports,
+readiness checks, and shutdown behavior. Switching by hand means remembering
+each backend's details, reconfiguring clients, and cleaning up processes that
+may still hold GPU memory.
 
-| Dimension | SwapAI | llama-swap |
-| --- | --- | --- |
-| Switch trigger | Explicit CLI, agent, or scoped `run` session | `model` field in each API request |
-| Request path | Client talks directly to the selected runtime | Proxy remains between client and runtime |
-| Runtime residency | One managed runtime at a time | One model by default, with configurable concurrent-model policies |
-| Control layer | Auditable POSIX shell plus standard system tools | Prebuilt Go proxy binary |
-| Configuration | Small tab-separated profile map with `add` and `doctor` helpers | YAML model commands, hooks, routing, and policy configuration |
+SwapAI turns that work into one explicit, failure-safe operation:
 
-SwapAI additionally treats Ollama as a first-class backend with installed-model
-and load verification. A human or agent makes each lifecycle transition
-explicit, and a failed replacement rolls back to the prior profile. The entire
-control layer is currently 927 lines of POSIX shell in
-[`lib/swapai.sh`](lib/swapai.sh).
+1. Validate the requested profile before disturbing the active runtime.
+2. Stop the managed process gracefully and check for resource conflicts.
+3. Start the selected backend on a predictable OpenAI-compatible endpoint.
+4. Verify readiness and, for Ollama, confirm that the model is installed and
+   loaded.
+5. Restore the previous profile automatically if the replacement fails.
 
-If you want per-request hot swapping behind one endpoint, use llama-swap. If
-you want one auditable script designed to keep one managed runtime active and
-warn about GPU or port conflicts, use SwapAI. `swapai switch --for-model MODEL`
-provides an opt-in bridge for agents that know a model ID but should not edit
-profile configuration.
+It can also scope a runtime to one command with `swapai run`, or resolve an
+exact model ID with `swapai switch --for-model`. SwapAI never performs inference
+or stays in the request path; it makes local runtime lifecycle changes visible,
+repeatable, and easy to audit. The complete control layer is currently 927
+lines of POSIX shell in [`lib/swapai.sh`](lib/swapai.sh).
 
 ## Quick start
 
