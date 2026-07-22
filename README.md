@@ -107,6 +107,8 @@ swapai switch --for-model qwen2.5-coder:7b
 The first exact model match wins. Supported backend values are:
 
 - `ollama`: starts a dedicated `ollama serve` process on the SwapAI endpoint.
+- `ollama-attach`: reuses an existing Ollama service instead of owning a
+  second daemon.
 - `llamacpp`: runs `llama-server`; the model field is a GGUF path.
 - `vllm`: runs the vLLM OpenAI-compatible server through Python.
 - `mock`: lifecycle-only backend used by the test suite.
@@ -118,6 +120,23 @@ it before reporting the profile as active. Pull it before switching if needed:
 ollama pull qwen2.5-coder:7b
 ```
 
+### Existing Ollama services
+
+Desktop and package-manager installations commonly keep `ollama serve`
+running on port `11434`. Starting another Ollama daemon on `11435` can make two
+processes compete for the same model store and accelerator memory. Use an
+`ollama-attach` profile to reuse the existing service:
+
+```sh
+swapai add existing ollama-attach qwen2.5-coder:7b
+swapai switch existing
+```
+
+Attach mode verifies and loads the configured model but never stops the
+external Ollama process. Its API endpoint is `http://127.0.0.1:11434/v1` by
+default, so clients must use the endpoint printed by `swapai endpoint`. Set
+`SWAPAI_OLLAMA_PORT` if the existing service uses another port.
+
 ## Configuration
 
 Environment variables make SwapAI easy to script and test:
@@ -126,6 +145,7 @@ Environment variables make SwapAI easy to script and test:
 | --- | --- | --- |
 | `SWAPAI_HOST` | `127.0.0.1` | Runtime bind host |
 | `SWAPAI_PORT` | `11435` | Stable runtime port |
+| `SWAPAI_OLLAMA_PORT` | `11434` | Existing Ollama port used by attach mode |
 | `SWAPAI_CONFIG_HOME` | `$XDG_CONFIG_HOME/swapai` | Configuration directory |
 | `SWAPAI_STATE_HOME` | `$XDG_STATE_HOME/swapai` | PID, active state, logs |
 | `SWAPAI_LLAMA_SERVER` | `llama-server` | llama.cpp server executable |

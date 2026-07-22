@@ -3,6 +3,7 @@
 : "${SWAPAI_VERSION:=0.2.0}"
 : "${SWAPAI_HOST:=127.0.0.1}"
 : "${SWAPAI_PORT:=11435}"
+: "${SWAPAI_OLLAMA_PORT:=11434}"
 : "${SWAPAI_CONFIG_HOME:=${XDG_CONFIG_HOME:-$HOME/.config}/swapai}"
 : "${SWAPAI_STATE_HOME:=${XDG_STATE_HOME:-$HOME/.local/state}/swapai}"
 : "${SWAPAI_PROFILES:=$SWAPAI_CONFIG_HOME/profiles.tsv}"
@@ -46,7 +47,7 @@ Usage:
   swapai version
 
 Profiles map a short name such as "coder" to a backend and model.
-Supported backends: ollama, llamacpp, vllm, mock.
+Supported backends: ollama, ollama-attach, llamacpp, vllm, mock.
 EOF
 }
 
@@ -180,6 +181,12 @@ swapai_read_pid() {
 }
 
 swapai_is_running() {
+    active_backend=$(swapai_active_value backend 2>/dev/null || true)
+    if [ "$active_backend" = ollama-attach ]; then
+        command -v curl >/dev/null 2>&1 || return 1
+        curl -fsS --max-time 1 "$(swapai_api_endpoint)/models" >/dev/null 2>&1
+        return $?
+    fi
     running_pid=$(swapai_read_pid) || return 1
     kill -0 "$running_pid" 2>/dev/null
 }
@@ -189,13 +196,15 @@ swapai_write_active() {
     active_backend=$2
     active_model=$3
     active_pid=$4
+    active_ownership=$5
     {
         printf 'name=%s\n' "$active_name"
         printf 'backend=%s\n' "$active_backend"
         printf 'model=%s\n' "$active_model"
-        printf 'host=%s\n' "$SWAPAI_HOST"
-        printf 'port=%s\n' "$SWAPAI_PORT"
+        printf 'host=%s\n' "${SWAPAI_RUNTIME_HOST:-$SWAPAI_HOST}"
+        printf 'port=%s\n' "${SWAPAI_RUNTIME_PORT:-$SWAPAI_PORT}"
         printf 'pid=%s\n' "$active_pid"
+        printf 'ownership=%s\n' "$active_ownership"
     } > "$SWAPAI_ACTIVE_FILE"
 }
 
@@ -234,8 +243,11 @@ swapai_start_backend() {
                 swapai_die "ollama is not installed"
                 return 1
             }
-            OLLAMA_HOST="$SWAPAI_HOST:$SWAPAI_PORT" \
+            OLLAMA_HOST="${SWAPAI_RUNTIME_HOST:-$SWAPAI_HOST}:${SWAPAI_RUNTIME_PORT:-$SWAPAI_PORT}" \
                 swapai_start_process ollama serve
+            ;;
+        ollama-attach)
+            SWAPAI_STARTED_PID=external
             ;;
         llamacpp)
             llama_bin=${SWAPAI_LLAMA_SERVER:-llama-server}
@@ -244,7 +256,8 @@ swapai_start_backend() {
                 return 1
             }
             swapai_start_process "$llama_bin" -m "$model" \
-                --host "$SWAPAI_HOST" --port "$SWAPAI_PORT" $extra_args
+                --host "${SWAPAI_RUNTIME_HOST:-$SWAPAI_HOST}" \
+                --port "${SWAPAI_RUNTIME_PORT:-$SWAPAI_PORT}" $extra_args
             ;;
         vllm)
             python_bin=${SWAPAI_PYTHON:-python3}
@@ -253,7 +266,8 @@ swapai_start_backend() {
                 return 1
             }
             swapai_start_process "$python_bin" -m vllm.entrypoints.openai.api_server \
-                --model "$model" --host "$SWAPAI_HOST" --port "$SWAPAI_PORT" $extra_args
+                --model "$model" --host "${SWAPAI_RUNTIME_HOST:-$SWAPAI_HOST}" \
+                --port "${SWAPAI_RUNTIME_PORT:-$SWAPAI_PORT}" $extra_args
             ;;
         mock)
             swapai_start_process sh -c 'trap "exit 0" TERM INT; while :; do sleep 1; done'
@@ -289,14 +303,17 @@ swapai_json_escape() {
 swapai_prepare_model() {
     prepared_backend=$1
     prepared_model=$2
-    [ "$prepared_backend" = ollama ] || return 0
+    case $prepared_backend in
+        ollama|ollama-attach) ;;
+        *) return 0 ;;
+    esac
 
     escaped_prepared_model=$(swapai_json_escape "$prepared_model")
     show_data="{\"model\":\"$escaped_prepared_model\"}"
     if ! curl -fsS --max-time 10 \
         -H 'Content-Type: application/json' \
         -d "$show_data" \
-        "http://$SWAPAI_HOST:$SWAPAI_PORT/api/show" >/dev/null 2>&1; then
+        "$(swapai_runtime_endpoint)/api/show" >/dev/null 2>&1; then
         swapai_error "Ollama model is not installed: $prepared_model"
         swapai_error "install it with: ollama pull $prepared_model"
         return 1
@@ -307,7 +324,7 @@ swapai_prepare_model() {
     if ! curl -fsS --max-time "$SWAPAI_MODEL_TIMEOUT" \
         -H 'Content-Type: application/json' \
         -d "$load_data" \
-        "http://$SWAPAI_HOST:$SWAPAI_PORT/api/generate" >/dev/null; then
+        "$(swapai_runtime_endpoint)/api/generate" >/dev/null; then
         swapai_error "Ollama could not load model: $prepared_model"
         return 1
     fi
@@ -324,6 +341,12 @@ swapai_validate_profile_line() {
             }
             command -v curl >/dev/null 2>&1 || {
                 swapai_die "curl is required for Ollama readiness checks"
+                return 1
+            }
+            ;;
+        ollama-attach)
+            command -v curl >/dev/null 2>&1 || {
+                swapai_die "curl is required for Ollama attach mode"
                 return 1
             }
             ;;
@@ -377,17 +400,29 @@ swapai_activate_profile_line() {
     activation_profile=$1
     swapai_parse_profile_line "$activation_profile"
 
-    if swapai_port_in_use "$SWAPAI_PORT"; then
+    SWAPAI_RUNTIME_HOST=$SWAPAI_HOST
+    SWAPAI_RUNTIME_PORT=$SWAPAI_PORT
+    activation_ownership=managed
+    if [ "$parsed_backend" = ollama-attach ]; then
+        SWAPAI_RUNTIME_PORT=$SWAPAI_OLLAMA_PORT
+        activation_ownership=external
+    fi
+
+    if [ "$activation_ownership" = managed ] && swapai_port_in_use "$SWAPAI_RUNTIME_PORT"; then
         swapai_die "port $SWAPAI_PORT is already in use"
         return 1
     fi
 
-    swapai_info "Starting $parsed_name ($parsed_backend: $parsed_model)..."
+    if [ "$activation_ownership" = external ]; then
+        swapai_info "Attaching $parsed_name to Ollama on $SWAPAI_RUNTIME_HOST:$SWAPAI_RUNTIME_PORT..."
+    else
+        swapai_info "Starting $parsed_name ($parsed_backend: $parsed_model)..."
+    fi
     swapai_start_backend \
         "$parsed_backend" "$parsed_model" "$parsed_arguments" || return 1
     activation_pid=$SWAPAI_STARTED_PID
     swapai_write_active \
-        "$parsed_name" "$parsed_backend" "$parsed_model" "$activation_pid"
+        "$parsed_name" "$parsed_backend" "$parsed_model" "$activation_pid" "$activation_ownership"
 
     if ! swapai_wait_ready "$parsed_backend"; then
         swapai_error "runtime did not become ready; see 'swapai logs'"
@@ -463,6 +498,12 @@ swapai_switch() {
 
 swapai_stop() {
     stop_mode=${1:-normal}
+    stop_backend=$(swapai_active_value backend 2>/dev/null || true)
+    if [ "$stop_backend" = ollama-attach ]; then
+        rm -f "$SWAPAI_ACTIVE_FILE" "$SWAPAI_PID_FILE"
+        [ "$stop_mode" = quiet ] || swapai_info "Detached from external Ollama runtime."
+        return 0
+    fi
     if ! stop_pid=$(swapai_read_pid); then
         [ "$stop_mode" = quiet ] || swapai_info "No SwapAI runtime is active."
         rm -f "$SWAPAI_ACTIVE_FILE" "$SWAPAI_PID_FILE"
@@ -494,12 +535,26 @@ swapai_status() {
     swapai_info "Profile: $(swapai_active_value name)"
     swapai_info "Backend: $(swapai_active_value backend)"
     swapai_info "Model: $(swapai_active_value model)"
-    swapai_info "PID: $(swapai_read_pid)"
+    status_ownership=$(swapai_active_value ownership 2>/dev/null || printf 'managed')
+    swapai_info "Ownership: $status_ownership"
+    if [ "$status_ownership" = external ]; then
+        swapai_info "PID: external"
+    else
+        swapai_info "PID: $(swapai_read_pid)"
+    fi
     swapai_info "API: $(swapai_api_endpoint)"
 }
 
 swapai_runtime_endpoint() {
-    printf 'http://%s:%s\n' "$SWAPAI_HOST" "$SWAPAI_PORT"
+    runtime_host=${SWAPAI_RUNTIME_HOST:-}
+    runtime_port=${SWAPAI_RUNTIME_PORT:-}
+    if [ -z "$runtime_host" ]; then
+        runtime_host=$(swapai_active_value host 2>/dev/null || printf '%s' "$SWAPAI_HOST")
+    fi
+    if [ -z "$runtime_port" ]; then
+        runtime_port=$(swapai_active_value port 2>/dev/null || printf '%s' "$SWAPAI_PORT")
+    fi
+    printf 'http://%s:%s\n' "$runtime_host" "$runtime_port"
 }
 
 swapai_api_endpoint() {

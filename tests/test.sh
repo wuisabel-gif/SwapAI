@@ -33,6 +33,7 @@ fi
 printf 'test\tmock\tfixture\n' >> "$SWAPAI_PROFILES"
 printf 'broken\tunsupported\tfixture\n' >> "$SWAPAI_PROFILES"
 printf 'fakeollama\tollama\tfixture-model\n' >> "$SWAPAI_PROFILES"
+printf 'attached\tollama-attach\tfixture-model\n' >> "$SWAPAI_PROFILES"
 printf 'fakellama\tllamacpp\t%s\t--ctx-size 1024\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
 printf 'fakevllm\tvllm\tfixture/model\t--dtype auto\n' >> "$SWAPAI_PROFILES"
 printf 'failllama\tllamacpp\t%s\n' "$TEST_ROOT/README.md" >> "$SWAPAI_PROFILES"
@@ -72,6 +73,14 @@ assert_contains "$ollama_capture" "ollama|127.0.0.1:11435|serve"
 assert_contains "$ollama_capture" "/v1/models"
 assert_contains "$ollama_capture" "/api/show"
 assert_contains "$ollama_capture" "/api/generate"
+
+"$TEST_ROOT/bin/swapai" switch attached >/dev/null
+attached_status=$("$TEST_ROOT/bin/swapai" status)
+assert_contains "$attached_status" "Backend: ollama-attach"
+assert_contains "$attached_status" "Ownership: external"
+assert_contains "$attached_status" "PID: external"
+assert_contains "$attached_status" "API: http://127.0.0.1:11434/v1"
+[ "$(grep -c '^ollama|' "$SWAPAI_TEST_CAPTURE")" -eq 1 ]
 
 "$TEST_ROOT/bin/swapai" switch fakellama >/dev/null
 llama_capture=$(sed -n '1,40p' "$SWAPAI_TEST_CAPTURE")
