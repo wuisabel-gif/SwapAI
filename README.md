@@ -119,7 +119,11 @@ make test
 ```
 
 The tests isolate all configuration and state in a temporary directory and use
-the mock adapter, so they do not download a model or require a GPU.
+fixture adapters, so they do not download a model or require a GPU. CI runs the
+same checks on both macOS and Linux. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+adapter requirements and contribution guidance.
+
+Release history is recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current scope
 
