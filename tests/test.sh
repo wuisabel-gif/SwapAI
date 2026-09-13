@@ -65,6 +65,21 @@ assert_contains "$status_output" "Status: running"
 assert_contains "$status_output" "Backend: mock"
 assert_contains "$status_output" "Model: fixture"
 
+assert_invalid_run() {
+    if invalid_run_output=$(swapai_cli run "$@" 2>&1); then
+        printf 'Expected invalid run arguments to fail\n' >&2
+        exit 1
+    fi
+    assert_contains "$invalid_run_output" "usage: swapai run <profile> -- <command...>"
+}
+
+assert_invalid_run
+assert_invalid_run testb
+assert_invalid_run testb --
+assert_invalid_run testb invalid true
+invalid_run_status=$(swapai_cli status)
+assert_contains "$invalid_run_status" "Profile: test"
+
 run_output=$(swapai_cli run testb -- true)
 assert_contains "$run_output" "Restoring test..."
 run_restored_status=$(swapai_cli status)

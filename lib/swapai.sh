@@ -539,10 +539,10 @@ swapai_run_restore() {
 }
 
 swapai_run() {
-    [ "$#" -ge 3 ] && [ "$2" = -- ] || {
+    if [ "$#" -lt 3 ] || [ "$2" != -- ]; then
         swapai_die "usage: swapai run <profile> -- <command...>"
         return 1
-    }
+    fi
 
     run_profile=$1
     shift 2
