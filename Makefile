@@ -1,4 +1,4 @@
-SHELL_FILES = bin/swapai lib/swapai.sh install.sh tests/test.sh tests/fixtures/bin/*
+SHELL_FILES = bin/swapai lib/swapai.sh install.sh tests/test.sh tests/deployment.sh tests/fixtures/bin/*
 
 .PHONY: test check shellcheck install
 
@@ -13,6 +13,7 @@ test:
 
 check:
 	sh -n $(SHELL_FILES)
+	sh tests/deployment.sh
 	@if command -v shellcheck >/dev/null 2>&1; then \
 		$(MAKE) shellcheck; \
 	else \

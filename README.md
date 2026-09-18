@@ -73,6 +73,13 @@ Ollama, llama.cpp, and vLLM each implement `/v1/models` and
 `/v1/chat/completions`. Their backend-native endpoints remain available on the
 same host and port when advanced runtime-specific behavior is needed.
 
+### Raspberry Pi / home server
+
+See the [Raspberry Pi deployment guide](docs/raspberry-pi.md) for a conservative
+CPU-only llama.cpp setup on Pi 4 8 GB / Raspberry Pi OS Lite 64-bit, loopback and
+SSH-tunnel access, and an optional systemd service. Physical Pi validation is
+still pending; the guide includes a hardware results checklist.
+
 ## Commands
 
 ```text

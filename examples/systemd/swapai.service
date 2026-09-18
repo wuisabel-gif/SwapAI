@@ -1,0 +1,35 @@
+# Optional system service for the dedicated /home/swapai account.
+# Read docs/raspberry-pi.md before installing. No crash supervision is provided.
+[Unit]
+Description=SwapAI CPU llama.cpp home server
+After=local-fs.target
+
+[Service]
+# swapai switch starts a nohup child and exits after readiness, not a daemon.
+Type=oneshot
+RemainAfterExit=yes
+User=swapai
+Group=swapai
+WorkingDirectory=/home/swapai
+Environment=HOME=/home/swapai
+Environment=PATH=/home/swapai/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=SWAPAI_CONFIG_HOME=/home/swapai/.config/swapai
+Environment=SWAPAI_STATE_HOME=/home/swapai/.local/state/swapai
+Environment=SWAPAI_LLAMA_SERVER=/home/swapai/src/llama.cpp/build/bin/llama-server
+Environment=SWAPAI_HOST=127.0.0.1
+Environment=SWAPAI_PORT=11435
+Environment=SWAPAI_START_TIMEOUT=300
+Environment=SWAPAI_STOP_TIMEOUT=15
+ExecStart=/home/swapai/.local/bin/swapai switch pi-cpu
+ExecStop=/home/swapai/.local/bin/swapai stop
+# Readiness iterations include curl plus sleep; leave ample startup margin.
+TimeoutStartSec=15min
+TimeoutStopSec=45s
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
